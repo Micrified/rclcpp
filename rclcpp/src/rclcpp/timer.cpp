@@ -29,8 +29,9 @@ using rclcpp::TimerBase;
 TimerBase::TimerBase(
   rclcpp::Clock::SharedPtr clock,
   std::chrono::nanoseconds period,
-  rclcpp::Context::SharedPtr context)
-: clock_(clock), timer_handle_(nullptr)
+  rclcpp::Context::SharedPtr context,
+  int callback_priority)
+: clock_(clock), timer_handle_(nullptr), callback_priority_(callback_priority)
 {
   if (nullptr == context) {
     context = rclcpp::contexts::get_global_default_context();
@@ -102,6 +103,11 @@ TimerBase::reset()
   if (rcl_timer_reset(timer_handle_.get()) != RCL_RET_OK) {
     throw std::runtime_error(std::string("Couldn't reset timer: ") + rcl_get_error_string().str);
   }
+}
+
+int TimerBase::get_callback_priority()
+{
+  return callback_priority_;
 }
 
 bool

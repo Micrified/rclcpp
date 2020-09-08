@@ -284,6 +284,7 @@ public:
           ++it;
           continue;
         }
+
         // Otherwise it is safe to set and return the any_exec
         any_exec.subscription = subscription;
         any_exec.callback_group = group;
@@ -389,6 +390,7 @@ public:
         }
         // Otherwise it is safe to set and return the any_exec
         any_exec.timer = timer;
+        any_exec.callback_priority = timer->get_callback_priority();
         any_exec.callback_group = group;
         any_exec.node_base = get_node_by_group(group, weak_nodes);
         timer_handles_.erase(it);

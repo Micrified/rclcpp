@@ -44,6 +44,10 @@ struct AnyExecutable
   rclcpp::ServiceBase::SharedPtr service;
   rclcpp::ClientBase::SharedPtr client;
   rclcpp::Waitable::SharedPtr waitable;
+
+  // Priority level
+  int callback_priority;
+
   // These are used to keep the scope on the containing items
   rclcpp::CallbackGroup::SharedPtr callback_group;
   rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node_base;

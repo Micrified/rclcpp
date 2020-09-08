@@ -49,6 +49,7 @@ MultiThreadedExecutor::spin()
   }
   RCLCPP_SCOPE_EXIT(this->spinning.store(false); );
   std::vector<std::thread> threads;
+  
   size_t thread_id = 0;
   {
     std::lock_guard<std::mutex> wait_lock(wait_mutex_);

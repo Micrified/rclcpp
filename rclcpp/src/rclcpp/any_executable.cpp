@@ -21,6 +21,7 @@ AnyExecutable::AnyExecutable()
   timer(nullptr),
   service(nullptr),
   client(nullptr),
+  callback_priority(-1),
   callback_group(nullptr),
   node_base(nullptr)
 {}

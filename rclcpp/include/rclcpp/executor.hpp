@@ -65,7 +65,7 @@ public:
    * \param[in] options Options used to configure the executor.
    */
   RCLCPP_PUBLIC
-  explicit Executor(const rclcpp::ExecutorOptions & options = rclcpp::ExecutorOptions());
+  explicit Executor (const rclcpp::ExecutorOptions & options = rclcpp::ExecutorOptions());
 
   /// Default destructor.
   RCLCPP_PUBLIC
@@ -73,8 +73,7 @@ public:
 
   /// Do work periodically as it becomes available to us. Blocking call, may block indefinitely.
   // It is up to the implementation of Executor to implement spin.
-  virtual void
-  spin() = 0;
+  virtual void spin() = 0;
 
   /// Add a node to the executor.
   /**
@@ -85,16 +84,14 @@ public:
    * node was added, it will wake up.
    */
   RCLCPP_PUBLIC
-  virtual void
-  add_node(rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node_ptr, bool notify = true);
+  virtual void add_node (rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node_ptr, bool notify = true);
 
   /// Convenience function which takes Node and forwards NodeBaseInterface.
   /**
    * \see rclcpp::Executor::add_node
    */
   RCLCPP_PUBLIC
-  virtual void
-  add_node(std::shared_ptr<rclcpp::Node> node_ptr, bool notify = true);
+  virtual void add_node (std::shared_ptr<rclcpp::Node> node_ptr, bool notify = true);
 
   /// Remove a node from the executor.
   /**
@@ -104,16 +101,15 @@ public:
    * waiting for work in another thread, because otherwise the executor would never be notified.
    */
   RCLCPP_PUBLIC
-  virtual void
-  remove_node(rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node_ptr, bool notify = true);
+  virtual void remove_node (rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node_ptr, 
+    bool notify = true);
 
   /// Convenience function which takes Node and forwards NodeBaseInterface.
   /**
    * \see rclcpp::Executor::remove_node
    */
   RCLCPP_PUBLIC
-  virtual void
-  remove_node(std::shared_ptr<rclcpp::Node> node_ptr, bool notify = true);
+  virtual void remove_node (std::shared_ptr<rclcpp::Node> node_ptr, bool notify = true);
 
   /// Add a node to executor, execute the next available unit of work, and remove the node.
   /**
@@ -124,27 +120,19 @@ public:
    */
   template<typename RepT = int64_t, typename T = std::milli>
   void
-  spin_node_once(
-    rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node,
+  spin_node_once (rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node,
     std::chrono::duration<RepT, T> timeout = std::chrono::duration<RepT, T>(-1))
   {
-    return spin_node_once_nanoseconds(
-      node,
-      std::chrono::duration_cast<std::chrono::nanoseconds>(timeout)
-    );
+    return spin_node_once_nanoseconds(node, std::chrono::duration_cast<std::chrono::nanoseconds>(timeout));
   }
 
   /// Convenience function which takes Node and forwards NodeBaseInterface.
   template<typename NodeT = rclcpp::Node, typename RepT = int64_t, typename T = std::milli>
   void
-  spin_node_once(
-    std::shared_ptr<NodeT> node,
-    std::chrono::duration<RepT, T> timeout = std::chrono::duration<RepT, T>(-1))
+  spin_node_once (std::shared_ptr<NodeT> node, std::chrono::duration<RepT, T> timeout = std::chrono::duration<RepT, T>(-1))
   {
-    return spin_node_once_nanoseconds(
-      node->get_node_base_interface(),
-      std::chrono::duration_cast<std::chrono::nanoseconds>(timeout)
-    );
+    return spin_node_once_nanoseconds(node->get_node_base_interface(), 
+      std::chrono::duration_cast<std::chrono::nanoseconds>(timeout));
   }
 
   /// Add a node, complete all immediately available work, and remove the node.
@@ -152,13 +140,11 @@ public:
    * \param[in] node Shared pointer to the node to add.
    */
   RCLCPP_PUBLIC
-  void
-  spin_node_some(rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node);
+  void spin_node_some (rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node);
 
   /// Convenience function which takes Node and forwards NodeBaseInterface.
   RCLCPP_PUBLIC
-  void
-  spin_node_some(std::shared_ptr<rclcpp::Node> node);
+  void spin_node_some (std::shared_ptr<rclcpp::Node> node);
 
   /// Complete all available queued work without blocking.
   /**
@@ -172,12 +158,10 @@ public:
    * been exceeded.
    */
   RCLCPP_PUBLIC
-  virtual void
-  spin_some(std::chrono::nanoseconds max_duration = std::chrono::nanoseconds(0));
+  virtual void spin_some (std::chrono::nanoseconds max_duration = std::chrono::nanoseconds(0));
 
   RCLCPP_PUBLIC
-  virtual void
-  spin_once(std::chrono::nanoseconds timeout = std::chrono::nanoseconds(-1));
+  virtual void spin_once (std::chrono::nanoseconds timeout = std::chrono::nanoseconds(-1));
 
   /// Spin (blocking) until the future is complete, it times out waiting, or rclcpp is interrupted.
   /**
@@ -190,8 +174,7 @@ public:
    * \return The return code, one of `SUCCESS`, `INTERRUPTED`, or `TIMEOUT`.
    */
   template<typename ResponseT, typename TimeRepT = int64_t, typename TimeT = std::milli>
-  FutureReturnCode
-  spin_until_future_complete(
+  FutureReturnCode spin_until_future_complete(
     const std::shared_future<ResponseT> & future,
     std::chrono::duration<TimeRepT, TimeT> timeout = std::chrono::duration<TimeRepT, TimeT>(-1))
   {
@@ -249,8 +232,7 @@ public:
    * \throws std::runtime_error if there is an issue triggering the guard condition
    */
   RCLCPP_PUBLIC
-  void
-  cancel();
+  void cancel();
 
   /// Support dynamic switching of the memory strategy.
   /**
@@ -260,14 +242,11 @@ public:
    * \throws std::runtime_error if memory_strategy is null
    */
   RCLCPP_PUBLIC
-  void
-  set_memory_strategy(memory_strategy::MemoryStrategy::SharedPtr memory_strategy);
+  void set_memory_strategy (memory_strategy::MemoryStrategy::SharedPtr memory_strategy);
 
 protected:
   RCLCPP_PUBLIC
-  void
-  spin_node_once_nanoseconds(
-    rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node,
+  void spin_node_once_nanoseconds (rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node,
     std::chrono::nanoseconds timeout);
 
   /// Find the next available executable and do the work associated with it.
@@ -277,50 +256,49 @@ protected:
    * \throws std::runtime_error if there is an issue triggering the guard condition
    */
   RCLCPP_PUBLIC
-  void
-  execute_any_executable(AnyExecutable & any_exec);
+  void execute_any_executable (AnyExecutable &any_exec);
 
   RCLCPP_PUBLIC
-  static void
-  execute_subscription(
-    rclcpp::SubscriptionBase::SharedPtr subscription);
+  static void execute_subscription (rclcpp::SubscriptionBase::SharedPtr subscription);
 
   RCLCPP_PUBLIC
-  static void
-  execute_timer(rclcpp::TimerBase::SharedPtr timer);
+  static void execute_serialized_subscription (rclcpp::SubscriptionBase::SharedPtr s);
 
   RCLCPP_PUBLIC
-  static void
-  execute_service(rclcpp::ServiceBase::SharedPtr service);
+  static void execute_loaned_subscription (rclcpp::SubscriptionBase::SharedPtr s);
 
   RCLCPP_PUBLIC
-  static void
-  execute_client(rclcpp::ClientBase::SharedPtr client);
+  static void execute_copied_subscription (rclcpp::SubscriptionBase::SharedPtr s);
+
+  RCLCPP_PUBLIC
+  static void execute_timer (rclcpp::TimerBase::SharedPtr timer);
+
+  RCLCPP_PUBLIC
+  static void execute_service (rclcpp::ServiceBase::SharedPtr service);
+
+  RCLCPP_PUBLIC
+  static void execute_client (rclcpp::ClientBase::SharedPtr client);
 
   /**
    * \throws std::runtime_error if the wait set can be cleared
    */
   RCLCPP_PUBLIC
-  void
-  wait_for_work(std::chrono::nanoseconds timeout = std::chrono::nanoseconds(-1));
+  void wait_for_work (std::chrono::nanoseconds timeout = std::chrono::nanoseconds(-1));
 
   RCLCPP_PUBLIC
-  rclcpp::node_interfaces::NodeBaseInterface::SharedPtr
-  get_node_by_group(rclcpp::CallbackGroup::SharedPtr group);
+  rclcpp::node_interfaces::NodeBaseInterface::SharedPtr get_node_by_group (rclcpp::CallbackGroup::SharedPtr group);
 
   RCLCPP_PUBLIC
-  rclcpp::CallbackGroup::SharedPtr
-  get_group_by_timer(rclcpp::TimerBase::SharedPtr timer);
+  rclcpp::CallbackGroup::SharedPtr get_group_by_timer (rclcpp::TimerBase::SharedPtr timer);
 
   RCLCPP_PUBLIC
-  bool
-  get_next_ready_executable(AnyExecutable & any_executable);
+  bool get_next_ready_executable (AnyExecutable &any_executable);
 
   RCLCPP_PUBLIC
-  bool
-  get_next_executable(
-    AnyExecutable & any_executable,
-    std::chrono::nanoseconds timeout = std::chrono::nanoseconds(-1));
+  bool can_run_ready_executable (bool ready, AnyExecutable &any_executable);
+
+  RCLCPP_PUBLIC
+  bool get_next_executable (AnyExecutable &any_executable, std::chrono::nanoseconds timeout = std::chrono::nanoseconds(-1));
 
   /// Spinning state, used to prevent multi threaded calls to spin and to cancel blocking spins.
   std::atomic_bool spinning;
@@ -342,13 +320,16 @@ protected:
 
   RCLCPP_DISABLE_COPY(Executor)
 
+  /// Node list (weak pointers)
   std::list<rclcpp::node_interfaces::NodeBaseInterface::WeakPtr> weak_nodes_;
+
+  /// Guard Condition list
   std::list<const rcl_guard_condition_t *> guard_conditions_;
 
 private:
+
   RCLCPP_PUBLIC
-  void
-  spin_once_impl(std::chrono::nanoseconds timeout);
+  void spin_once_impl (std::chrono::nanoseconds timeout);
 };
 
 namespace executor
