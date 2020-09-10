@@ -33,26 +33,31 @@
 #include "rclcpp/macros.hpp"
 #include "rclcpp/visibility_control.hpp"
 
+
 /*
  *******************************************************************************
- *                             Class Declarations                              *
+ *                         Complete Class Definitions                          *
  *******************************************************************************
 */
+
 
 namespace rclcpp
 {
 namespace executors
 {
 
+class PreemptivePriorityExecutor;
+
 // Type names for the thread main function signature
-using thread_func_t = void(int, int);
-using thread_func_p = void(*)(int, int);
+using thread_func_t = void(rclcpp::executors::PreemptivePriorityExecutor *, int, AnyExecutable);
+using thread_func_p = void(*)(rclcpp::executors::PreemptivePriorityExecutor *, int, AnyExecutable);
 
 class TaskInstance {
 public:
-	TaskInstance (int task_priority, thread_func_p thread_func):
+	TaskInstance (int task_priority, thread_func_p thread_func, AnyExecutable any_executable):
 		d_task_priority(task_priority),
 		d_thread_func(thread_func),
+		d_any_executable(any_executable),
 		d_task_ptr(nullptr),
 		d_is_running(false)
 	{
@@ -102,9 +107,15 @@ public:
 		return d_task_priority;
 	}
 
+	AnyExecutable any_executable ()
+	{
+		return d_any_executable;
+	}
+
 private:
 	int d_task_priority;                                  // Priority given to task
 	thread_func_p d_thread_func;                          // Main function of the thread
+	AnyExecutable d_any_executable;                       // Copy of the executable object
 	std::packaged_task<thread_func_t> *d_task_ptr;        // Pointer to task instance
 	bool d_is_running;                                    // Whether or not thread is running
 	std::shared_ptr<std::future<void>> d_task_future_ptr; // Pointer to value to return when done
@@ -152,6 +163,23 @@ private:
 	std::map<std::string, int> *d_map_p;
 };
 
+/*
+ *******************************************************************************
+ *                              Type Definitions                               *
+ *******************************************************************************
+*/
+
+
+// I didn't want to do this but the type is just too long
+typedef std::priority_queue<TaskInstance *, std::vector<TaskInstance *>, std::function<bool(TaskInstance *, TaskInstance *)>> TaskPriorityQueue;
+
+/*
+ *******************************************************************************
+ *                             Class Declarations                              *
+ *******************************************************************************
+*/
+
+
 class PreemptivePriorityExecutor : public rclcpp::Executor
 {
 public:
@@ -178,34 +206,48 @@ public:
 	\*/
 	RCLCPP_PUBLIC 
 	PreemptivePriorityExecutor (
-		PriorityCallbackMap *priority_callback_map_p = nullptr,
 		const rclcpp::ExecutorOptions &options = rclcpp::ExecutorOptions(),
 		size_t thread_count = 0,
-		std::chrono::nanoseconds timeout_ns = std::chrono::nanoseconds(-1))
-	:
-		d_thread_count(thread_count),
-		d_timeout_ns(timeout_ns),
-		d_priority_callback_map_p(priority_callback_map_p);
-	{
-
-	}
+		std::chrono::nanoseconds timeout_ns = std::chrono::nanoseconds(-1),
+		CallbackPriorityMap *callback_priority_map_p = nullptr);
 
 	/*\
 	 * Destructor for the PreemptivePriorityExecutor
 	\*/
 	RCLCPP_PUBLIC
-	~PreemptivePriorityExecutor()
-	{
-		delete d_priority_callback_map_p;
-	}
-
+	~PreemptivePriorityExecutor();
 
 	/*\
 	 *  Runs the executor
 	\*/
 	void spin() override;
 
+
 protected:
+
+	/*\
+	 * Allocates a new max priority queue, and transfers items from queue into it if they haven't
+	 * expired. 
+	 * \param queue Pointer to the TaskPriorityQueue to filter
+	\*/
+	std::priority_queue<TaskInstance *, std::vector<TaskInstance *>, std::function<bool(TaskInstance *, TaskInstance *)>> *filter_completed_tasks (std::priority_queue<TaskInstance *, std::vector<TaskInstance *>, std::function<bool(TaskInstance *, TaskInstance *)>> *queue);
+
+	/*\
+	 * Returns the priority with which to execute the given executable. Uses the internal 
+	 * lookup table (if set) to do this
+	 * Note: This doesn't work for services and clients
+	 * \param any_executable Reference to the executable for which to lookup the priority
+	\*/
+	int get_executable_priority (AnyExecutable &any_executable);
+
+	/*\
+	 * Runs a callback. This should be run within a worker thread at a lower priority
+	 * than the main thread
+	 * \param priority The priority assigned to this callback
+	 * \param any_executable The executable to run (copied)
+	\*/
+	RCLCPP_PUBLIC
+	static void run (rclcpp::executors::PreemptivePriorityExecutor *executor, int priority, AnyExecutable any_executable);
 
 private:
 	std::mutex d_io_mutex;
@@ -214,7 +256,7 @@ private:
 	std::chrono::nanoseconds d_timeout_ns;
 
 	// Priority callback map
-	PriorityCallbackMap *d_priority_callback_map_p;
+	CallbackPriorityMap *d_callback_priority_map_p;
 
 	// Priority map for subscription callbacks
 	// (node name x subscription topic x priority)
@@ -224,7 +266,9 @@ private:
 	// TODO: Remove entries from the map when a node is removed
 	// TODO: Add entries to the map when a node is added (or topic)
 	// TODO: ... 
-}
+};
+
+
 }
 }
 #endif

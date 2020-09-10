@@ -18,15 +18,35 @@ using rclcpp::executors::TaskInstance;
 using rclcpp::executors::CallbackPriorityMap;
 
 
+/*
+ *******************************************************************************
+ *                            Forward Declarations                             *
+ *******************************************************************************
+*/
+
+
+static bool task_compare (TaskInstance *a, TaskInstance *b);
+
+
+// I didn't want to do this but the type is just too long
+typedef std::priority_queue<TaskInstance *, std::vector<TaskInstance *>, std::function<bool(TaskInstance *, TaskInstance *)>> TaskPriorityQueue;
+
+/*
+ *******************************************************************************
+ *                           Constructor/Destructor                            *
+ *******************************************************************************
+*/
+
 PreemptivePriorityExecutor::PreemptivePriorityExecutor (
-	PriorityCallbackMap *priority_callback_map_p,
 	const rclcpp::ExecutorOptions &options,
 	size_t thread_count,
-	std::chrono::nanoseconds timeout_ns)
+	std::chrono::nanoseconds timeout_ns,
+	CallbackPriorityMap *callback_priority_map_p)
 :
+	rclcpp::Executor(options),
 	d_thread_count(thread_count),
 	d_timeout_ns(timeout_ns),
-	d_priority_callback_map_p(priority_callback_map_p)
+	d_callback_priority_map_p(callback_priority_map_p)
 {
 
 }
@@ -34,8 +54,15 @@ PreemptivePriorityExecutor::PreemptivePriorityExecutor (
 
 PreemptivePriorityExecutor::~PreemptivePriorityExecutor ()
 {
-	delete d_priority_callback_map_p;
+	delete d_callback_priority_map_p;
 }
+
+
+/*
+ *******************************************************************************
+ *                               Public Methods                                *
+ *******************************************************************************
+*/
 
 
 void PreemptivePriorityExecutor::spin ()
@@ -44,16 +71,8 @@ void PreemptivePriorityExecutor::spin ()
 	int policy, policy_old;
 	AnyExecutable any_executable;
 
-	// Lambda comparator for queue elements
-	auto task_cmp = [](TaskInstance *left, TaskInstance *right)
-	{
-		return (left->d_task_priority < right->d_task_priority);
-	};
-
 	// TaskInstance priority queue
-	std::priority_queue<TaskInstance *, std::vector<TaskInstance *>, 
-		decltype(task_cmp)> *task_queue_p = new std::priority_queue<TaskInstance *, std::vector<TaskInstance *>, 
-		decltype(task_cmp)>(task_cmp);
+	TaskPriorityQueue *task_queue_p = new TaskPriorityQueue(task_compare);
 
 	// Check: Not already spinning
 	if (true == spinning.exchange(true)) {
@@ -71,7 +90,8 @@ void PreemptivePriorityExecutor::spin ()
 	// Apply new policy (scheduler runs at maximum priority)
 	sch.sched_priority = 99;
 	if (0 != pthread_setschedparam(pthread_self(), SCHED_FIFO, &sch)) {
-		throw std::runtime_error("pthread_setschedparam: " + std::strerror(errno));
+		throw std::runtime_error(std::string("pthread_setschedparam: ") +
+		 std::string(std::strerror(errno)));
 	}
 
 	// While should spin ...
@@ -80,62 +100,63 @@ void PreemptivePriorityExecutor::spin ()
 		// Wait for work ... 
 		wait_for_work(d_timeout_ns);
 
-		// Check if should still spin
+		// Clear the task queue of completed tasks
+		task_queue_p = this->filter_completed_tasks(task_queue_p);
+
+		// Exit loop if spinning disabled
 		if (false == spinning.load()) {
 			break;
 		}
 
-		// TODO: Filter the heap
-		// 1. Go through and remove all items, place into a new heap
-		// 2. Remove heap elements that have finished executing
+		// If a new executable is waiting: Place it into the priority queue
+		if (true == this->get_next_ready_executable(any_executable)) {
 
-		// If no ready executable (though there ought to be - continue)
-		if (false == this->get_next_ready_executable(any_executable)) {
+			// Compute a priority for this callback
+			int new_task_priority = this->get_executable_priority(any_executable);
+
+			// Create a new task instance
+			TaskInstance *new_task_ptr = new TaskInstance(new_task_priority,
+				PreemptivePriorityExecutor::run, std::move(any_executable));
+
+			// Insert the callback into the priority heap
+			task_queue_p->push(new_task_ptr);
+		}
+
+		// Dequeue the highest priority callback to run
+		TaskInstance *highest_priority_callback = task_queue_p->top();
+
+		// If this task is busy running - do nothing
+		if (!(std::future_status::ready == 
+			highest_priority_callback->get_future_ptr()->wait_for(std::chrono::seconds(0))))
+		{
 			continue;
 		}
 
-		// Get priority:
-		// 1. If it's a timer, it's built in already
-		// 2. If it's a subscription, you need to use the table
-		// 3. Otherwise it just gets a default priority of -1
-		int new_task_priority = this->get_executable_priority(any_executable);
+		// Fetch the executable
+		any_executable = highest_priority_callback->any_executable();
 
-		// Build new task instance
-		// TODO: Give correct thread pointer parameter!
-		TaskInstance *new_task_p = new TaskInstance(new_task_priority, nullptr);
+		// Otherwise, launch this task
+		std::thread new_task_thread(std::move(*(highest_priority_callback->get_task_ptr())),
+			this, 
+			highest_priority_callback->task_priority(),
+			any_executable);
 
-		// If there are pending tasks
-		if (0 < task_queue_p->size()) {
-			auto highest_priority_task = task_queue_p->top();
-
-			// If current task priority is less than that of most important
-			if (new_task_priority < highest_priority_task->task_priority()) {
-				// Enqueue the task and wait for more work (or for work to end)
-				task_queue_p->push(new_task);
-				continue;
-			}
-		}
-
-		// Otherwise:
-		// 1. There are no other tasks running or pending
-		// 2. All other tasks running or pending are of lower priority than new task
-
-		// Create the new task thread
-		std::thread new_task_thread(std::move(*(new_task_p->get_task_ptr())), new_task_priority, 
-			new_task_priority);
-
-		// Set the thread priority level
-		int min_thread_priority = 50;
+		// Assign the priority level to the thread
+		int base_thread_priority_level = 50;
 		pthread_getschedparam(new_task_thread.native_handle(), &policy, &sch);
-		sch.sched_priority = min_thread_priority + new_task_priority;
-		if (pthread_setschedparam(thread_1.native_handle(), SCHED_FIFO, &sch)) {
-			std::cerr << "pthread_setschedparam: " << std::strerror(errno) 
-			          << std::endl;
-			return -1;
+		sch.sched_priority = base_thread_priority_level + highest_priority_callback->task_priority();
+		if (pthread_setschedparam(new_task_thread.native_handle(), SCHED_FIFO, &sch)) {
+			throw std::runtime_error(std::string("pthread_setschedparam: ") +
+			 std::string(std::strerror(errno)));
 		}
 
-		// Detach the thread (object now becomes invalid)
+		// Detach the thread
 		new_task_thread.detach();
+	}
+
+	// Busy wait for any outstanding work to finish (in case of spinning set to false)
+	while (0 < task_queue_p->size()) {
+		task_queue_p = this->filter_completed_tasks(task_queue_p);
 	}
 
 	// Free allocated objects
@@ -143,25 +164,70 @@ void PreemptivePriorityExecutor::spin ()
 
 	// Restore old policy
 	if (0 != pthread_setschedparam(pthread_self(), policy_old, &sch_old)) {
-		throw std::runtime_error("thread_setschedparam: " + std::strerror(errno));
+		throw std::runtime_error(std::string("thread_setschedparam: ") + 
+			std::string(std::strerror(errno)));
 	}
 }
 
-int PreemptivePriorityExecutors::get_executable_priority (AnyExecutable &any_executable)
+/*
+ *******************************************************************************
+ *                               Support Methods                               *
+ *******************************************************************************
+*/
+
+
+static bool task_compare (TaskInstance *a, TaskInstance *b)
+{
+	return (a->task_priority() < b->task_priority());
+}
+
+
+TaskPriorityQueue *PreemptivePriorityExecutor::filter_completed_tasks (TaskPriorityQueue *queue)
+{
+	TaskPriorityQueue *filtered_queue = new TaskPriorityQueue(task_compare);
+
+	// Pop elements
+	while (false == queue->empty()) {
+		TaskInstance *task_p = queue->top();
+		queue->pop();
+
+		// If the task has finished, then destroy it and move on
+		if (std::future_status::ready == task_p->get_future_ptr()->wait_for(std::chrono::seconds(0))) {
+			delete task_p;
+			continue;
+		}
+
+		// Otherwise: Push it into the new priority queue
+		filtered_queue->push(task_p);
+	}
+
+	// Destroy the old queue
+	delete queue;
+
+	return filtered_queue;
+}
+
+
+int PreemptivePriorityExecutor::get_executable_priority (AnyExecutable &any_executable)
 {
 	int priority = -1;
 
 	// If it is a timer, then use the supplied value (set via the timer constructor)
 	if (nullptr != any_executable.timer) {
-		return static_cast<off_t>(any_executable.callback_priority);
+		return any_executable.callback_priority;
+	}
+
+	// If no callback priority map was provided, simply return now
+	if (nullptr == d_callback_priority_map_p) {
+		return priority;
 	}
 
 	// If it is a subscription, lookup the priority in the map
 	if (nullptr != any_executable.subscription) {
 		const char *node_name = any_executable.node_base->get_name();
 		const char *subscription_topic = any_executable.subscription->get_topic_name();
-		if (false == d_priority_callback_map_p->get_priority_for_node_on_subscription(
-			&priority, node_name, subscription_topic))
+		if (false == d_callback_priority_map_p->get_priority_for_node_on_subscription(
+			node_name, subscription_topic, &priority))
 		{
 			priority = -1;
 		}
@@ -170,28 +236,29 @@ int PreemptivePriorityExecutors::get_executable_priority (AnyExecutable &any_exe
 	return priority;
 }
 
-void PreemptivePriorityExecutor::run (size_t thread_id, int priority)
+
+void PreemptivePriorityExecutor::run (rclcpp::executors::PreemptivePriorityExecutor *executor, int priority, AnyExecutable any_executable)
 {
 	sched_param sch;
 	int policy;
+	int thread_id = pthread_self();
 
 	// Get thread info
-	pthread_getschedparam(pthread_self(), &policy, &sch);
+	pthread_getschedparam(thread_id, &policy, &sch);
 
 	// Print: Start
 	{
-		std::lock<std::mutex> io_lock(d_io_mutex)
 		std::cout << "[" << thread_id << "]<" << priority << "> " << "Starting ..." 
 				  << std::endl;
 	}
 
 	// Work
 	// TODO ...
+	executor->execute_any_executable(any_executable);
 
 
 	// Print: End
 	{
-		std::lock<std::mutex> io_lock(d_io_mutex);
 		std::cout << "[" << thread_id << "]<" << priority << "> " << "Done " 
 				  << std::endl;
 	}

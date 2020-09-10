@@ -244,11 +244,6 @@ public:
   RCLCPP_PUBLIC
   void set_memory_strategy (memory_strategy::MemoryStrategy::SharedPtr memory_strategy);
 
-protected:
-  RCLCPP_PUBLIC
-  void spin_node_once_nanoseconds (rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node,
-    std::chrono::nanoseconds timeout);
-
   /// Find the next available executable and do the work associated with it.
   /**
    * \param[in] any_exec Union structure that can hold any executable type (timer, subscription,
@@ -257,6 +252,11 @@ protected:
    */
   RCLCPP_PUBLIC
   void execute_any_executable (AnyExecutable &any_exec);
+
+protected:
+  RCLCPP_PUBLIC
+  void spin_node_once_nanoseconds (rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node,
+    std::chrono::nanoseconds timeout);
 
   RCLCPP_PUBLIC
   static void execute_subscription (rclcpp::SubscriptionBase::SharedPtr subscription);
