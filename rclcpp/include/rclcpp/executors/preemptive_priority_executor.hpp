@@ -56,44 +56,24 @@ using thread_func_p = void(*)(rclcpp::executors::PreemptivePriorityExecutor *, r
 
 class TaskInstance {
 public:
-	TaskInstance (int task_priority, thread_func_p thread_func, AnyExecutable any_executable):
+	TaskInstance (int task_priority, AnyExecutable any_executable):
 		d_task_priority(task_priority),
-		d_thread_func(thread_func),
 		d_any_executable(any_executable),
-		d_task_ptr(nullptr),
 		d_is_running(false),
 		d_is_finished(false)
 	{
-		// Create task object
-		d_task_ptr = new std::packaged_task<thread_func_t>(thread_func);
 
-		// Obtain future (may only be done once)
-		d_task_future_ptr = std::make_shared<std::future<void>>(d_task_ptr->get_future());
 	}
 
 	TaskInstance (const TaskInstance &other)
 	{
 		d_task_priority = other.d_task_priority;
-		d_thread_func = other.d_thread_func;
-		d_task_ptr = other.d_task_ptr;
 		d_is_running = other.d_is_running;
 		d_is_finished.store(other.d_is_finished.load());
-		d_task_future_ptr = other.d_task_future_ptr;
 	}
 
 	~TaskInstance ()
 	{
-		delete d_task_ptr;
-	}
-
-	std::packaged_task<thread_func_t> *get_task_ptr ()
-	{
-		return d_task_ptr;
-	}
-
-	std::shared_ptr<std::future<void>> get_future_ptr ()
-	{
-		return d_task_future_ptr;
 	}
 
 	void set_is_running (bool is_running)
@@ -127,12 +107,9 @@ public:
 
 private:
 	int d_task_priority;                                  // Priority given to task
-	thread_func_p d_thread_func;                          // Main function of the thread
 	AnyExecutable d_any_executable;                       // Copy of the executable object
-	std::packaged_task<thread_func_t> *d_task_ptr;        // Pointer to task instance
 	bool d_is_running;                                    // Whether or not thread is running
 	std::atomic<bool> d_is_finished;                      // Whether or not the thread is finished
-	std::shared_ptr<std::future<void>> d_task_future_ptr; // Pointer to value to return when done
 };
 
 class CallbackPriorityMap {

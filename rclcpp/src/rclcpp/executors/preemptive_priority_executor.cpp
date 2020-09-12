@@ -150,8 +150,7 @@ void PreemptivePriorityExecutor::spin ()
 			//std::cout << "Executor: Ready executable with priority " << new_task_priority << std::endl;
 
 			// Create a new task instance
-			TaskInstance *new_task_ptr = new TaskInstance(new_task_priority,
-				PreemptivePriorityExecutor::run, std::move(any_executable));
+			TaskInstance *new_task_ptr = new TaskInstance(new_task_priority, std::move(any_executable));
 
 			// Insert the callback into the priority heap
 			task_queue_p->push(new_task_ptr);
@@ -322,11 +321,8 @@ int PreemptivePriorityExecutor::get_executable_priority (AnyExecutable &any_exec
 
 void PreemptivePriorityExecutor::run (rclcpp::executors::PreemptivePriorityExecutor *executor, TaskInstance *task_p)
 {
-	sched_param sch;
-	int policy;
 	int thread_id = pthread_self();
 	std::set<rclcpp::TimerBase::SharedPtr> *scheduled_timers = executor->scheduled_timers();
-	std::mutex *wait_mutex_p = executor->wait_mutex();
 	int priority = task_p->task_priority();
 	AnyExecutable any_executable = task_p->any_executable();
 
