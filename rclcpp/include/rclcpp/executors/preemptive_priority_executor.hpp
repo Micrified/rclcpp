@@ -48,10 +48,11 @@ namespace executors
 {
 
 class PreemptivePriorityExecutor;
+class TaskInstance;
 
 // Type names for the thread main function signature
-using thread_func_t = void(rclcpp::executors::PreemptivePriorityExecutor *, int, AnyExecutable);
-using thread_func_p = void(*)(rclcpp::executors::PreemptivePriorityExecutor *, int, AnyExecutable);
+using thread_func_t = void(rclcpp::executors::PreemptivePriorityExecutor *, rclcpp::executors::TaskInstance *);
+using thread_func_p = void(*)(rclcpp::executors::PreemptivePriorityExecutor *, rclcpp::executors::TaskInstance *);
 
 class TaskInstance {
 public:
@@ -60,7 +61,8 @@ public:
 		d_thread_func(thread_func),
 		d_any_executable(any_executable),
 		d_task_ptr(nullptr),
-		d_is_running(false)
+		d_is_running(false),
+		d_is_finished(false)
 	{
 		// Create task object
 		d_task_ptr = new std::packaged_task<thread_func_t>(thread_func);
@@ -75,6 +77,7 @@ public:
 		d_thread_func = other.d_thread_func;
 		d_task_ptr = other.d_task_ptr;
 		d_is_running = other.d_is_running;
+		d_is_finished.store(other.d_is_finished.load());
 		d_task_future_ptr = other.d_task_future_ptr;
 	}
 
@@ -103,6 +106,15 @@ public:
 		return d_is_running;
 	}
 
+	void set_is_finished (bool is_finished) {
+		d_is_finished.store(is_finished);
+	}
+
+	bool is_finished ()
+	{
+		return d_is_finished.load();
+	}
+
 	int task_priority ()
 	{
 		return d_task_priority;
@@ -119,6 +131,7 @@ private:
 	AnyExecutable d_any_executable;                       // Copy of the executable object
 	std::packaged_task<thread_func_t> *d_task_ptr;        // Pointer to task instance
 	bool d_is_running;                                    // Whether or not thread is running
+	std::atomic<bool> d_is_finished;                      // Whether or not the thread is finished
 	std::shared_ptr<std::future<void>> d_task_future_ptr; // Pointer to value to return when done
 };
 
@@ -250,7 +263,7 @@ protected:
 	 * \param any_executable The executable to run (copied)
 	\*/
 	RCLCPP_PUBLIC
-	static void run (rclcpp::executors::PreemptivePriorityExecutor *executor, int priority, AnyExecutable any_executable);
+	static void run (rclcpp::executors::PreemptivePriorityExecutor *executor, TaskInstance *task_p);
 
 	/*\
 	 * Returns a pointer to the wait mutex

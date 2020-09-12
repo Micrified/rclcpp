@@ -122,14 +122,14 @@ void PreemptivePriorityExecutor::spin ()
 		// If a new executable is waiting: Place it into the priority queue
 		if (true == this->get_next_ready_executable(any_executable)) {
 
-			std::cout << "Executor: Executable is ready!" << std::endl;
+			//std::cout << "Executor: Executable is ready!" << std::endl;
 
 			// If the executable is a timer, then do not allow reentrant behavior 
 			if (nullptr != any_executable.timer) {
 
 				// If it is already accounted for then do not consider it
 				if (0 != d_scheduled_timers.count(any_executable.timer)) {
-					std::cout << "Executor: Is a timer and already taken, will wait ..." << std::endl;
+					//std::cout << "Executor: Is a timer and already taken, will wait ..." << std::endl;
 					// If it has a non-null callback group then reset it
 					if (nullptr != any_executable.callback_group) {
 						any_executable.callback_group->can_be_taken_from().store(true);
@@ -179,14 +179,8 @@ void PreemptivePriorityExecutor::spin ()
 			highest_priority_callback->set_is_running(true);
 		}
 
-		// Fetch the executable
-		any_executable = highest_priority_callback->any_executable();
-
 		// Otherwise, launch this task
-		std::thread new_task_thread(std::move(*(highest_priority_callback->get_task_ptr())),
-			this, 
-			highest_priority_callback->task_priority(),
-			any_executable);
+		std::thread new_task_thread(std::move(PreemptivePriorityExecutor::run), this, highest_priority_callback);
 
 		// Assign the priority level to the thread
 		int base_thread_priority_level = 50;
@@ -261,7 +255,7 @@ TaskPriorityQueue *PreemptivePriorityExecutor::filter_completed_tasks (TaskPrior
 {
 	TaskPriorityQueue *filtered_queue = new TaskPriorityQueue(task_compare);
 
-	std::cout << "queue = {";
+	//std::cout << "queue = {";
 	// Pop elements
 	while (false == queue->empty()) {
 		TaskInstance *task_p = queue->top();
@@ -269,22 +263,27 @@ TaskPriorityQueue *PreemptivePriorityExecutor::filter_completed_tasks (TaskPrior
 
 		// DEBUG:
 		AnyExecutable any_executable = task_p->any_executable();
-		show_any_executable(&any_executable);
+		//show_any_executable(&any_executable);
 
 		// If the task has finished, then destroy it and move on
-		if (std::future_status::ready == task_p->get_future_ptr()->wait_for(std::chrono::seconds(0))) {
-			std::cout << "(done), ";
+		// TODO: Maybe a race condition here
+		//       Only the workthread can set is finished
+		//       if it tries to access after this one deletes
+		//       then it is a bad thing - but shouldn't happen
+		//       since the last access must be to set is finished
+		if (task_p->is_finished()) {
+			std::cout << "Executor: detected thread done!" << std::endl;
 			delete task_p;
 			continue;
 		}
 
-		std::cout << ", ";
+		//std::cout << ", ";
 
 		// Otherwise: Push it into the new priority queue
 		filtered_queue->push(task_p);
 	}
 
-	std::cout << "}" << std::endl; 
+	//std::cout << "}" << std::endl; 
 
 	// Destroy the old queue
 	delete queue;
@@ -321,12 +320,15 @@ int PreemptivePriorityExecutor::get_executable_priority (AnyExecutable &any_exec
 	return priority;
 }
 
-void PreemptivePriorityExecutor::run (rclcpp::executors::PreemptivePriorityExecutor *executor, int priority, AnyExecutable any_executable)
+void PreemptivePriorityExecutor::run (rclcpp::executors::PreemptivePriorityExecutor *executor, TaskInstance *task_p)
 {
 	sched_param sch;
 	int policy;
 	int thread_id = pthread_self();
 	std::set<rclcpp::TimerBase::SharedPtr> *scheduled_timers = executor->scheduled_timers();
+	std::mutex *wait_mutex_p = executor->wait_mutex();
+	int priority = task_p->task_priority();
+	AnyExecutable any_executable = task_p->any_executable();
 
 	// Get thread info
 	// pthread_getschedparam(thread_id, &policy, &sch);
@@ -352,6 +354,10 @@ void PreemptivePriorityExecutor::run (rclcpp::executors::PreemptivePriorityExecu
 	// Print: End
 	std::cout << "[" << thread_id << "]<" << priority << "> " << "Done " 
 				<< std::endl;
+
+
+    // Set value
+	task_p->set_is_finished(true);
 }
 
 	
