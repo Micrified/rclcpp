@@ -232,7 +232,8 @@ public:
   create_wall_timer(
     std::chrono::duration<DurationRepT, DurationT> period,
     CallbackT callback,
-    rclcpp::CallbackGroup::SharedPtr group = nullptr);
+    rclcpp::CallbackGroup::SharedPtr group = nullptr,
+    int priority = -1);
 
   /// Create and return a Client.
   /**

@@ -26,6 +26,7 @@
 #include <cstring>
 #include <map>
 #include <queue>
+#include <set>
 #include <functional>
 
 // RCLCPP headers
@@ -225,6 +226,8 @@ public:
 
 protected:
 
+	void show_any_executable (AnyExecutable *any_executable);
+
 	/*\
 	 * Allocates a new max priority queue, and transfers items from queue into it if they haven't
 	 * expired. 
@@ -249,6 +252,26 @@ protected:
 	RCLCPP_PUBLIC
 	static void run (rclcpp::executors::PreemptivePriorityExecutor *executor, int priority, AnyExecutable any_executable);
 
+	/*\
+	 * Returns a pointer to the wait mutex
+	\*/
+	std::mutex *wait_mutex ();
+
+	/*\
+	 * Returns pointer to the scheduled timers set
+	\*/
+	std::set<TimerBase::SharedPtr> *scheduled_timers ();
+
+	/*\
+	 * Returns the context
+	\*/
+	std::shared_ptr<rclcpp::Context> get_context ();
+
+	/*\
+	 * Returns true if spinning or not
+	\*/
+	bool get_spinning ();
+
 private:
 	std::mutex d_io_mutex;
 	std::mutex d_wait_mutex;
@@ -257,6 +280,9 @@ private:
 
 	// Priority callback map
 	CallbackPriorityMap *d_callback_priority_map_p;
+
+	// Scheduled timers 
+	std::set<TimerBase::SharedPtr> d_scheduled_timers;
 
 	// Priority map for subscription callbacks
 	// (node name x subscription topic x priority)

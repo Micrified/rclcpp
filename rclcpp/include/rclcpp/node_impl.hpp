@@ -109,14 +109,16 @@ typename rclcpp::WallTimer<CallbackT>::SharedPtr
 Node::create_wall_timer(
   std::chrono::duration<DurationRepT, DurationT> period,
   CallbackT callback,
-  rclcpp::CallbackGroup::SharedPtr group)
+  rclcpp::CallbackGroup::SharedPtr group,
+  int priority)
 {
   return rclcpp::create_wall_timer(
     period,
     std::move(callback),
     group,
     this->node_base_.get(),
-    this->node_timers_.get());
+    this->node_timers_.get(),
+    priority);
 }
 
 template<typename ServiceT>
