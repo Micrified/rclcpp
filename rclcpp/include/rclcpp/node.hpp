@@ -218,9 +218,35 @@ public:
     SubscriptionOptionsWithAllocator<AllocatorT>(),
     typename MessageMemoryStrategyT::SharedPtr msg_mem_strat = (
       MessageMemoryStrategyT::create_default()
-    )
+    ),
+    const int callback_priority = -1
   );
 
+
+  template<
+    typename MessageT,
+    typename CallbackT,
+    typename AllocatorT = std::allocator<void>,
+    typename CallbackMessageT =
+    typename rclcpp::subscription_traits::has_message_type<CallbackT>::type,
+    typename SubscriptionT = rclcpp::Subscription<CallbackMessageT, AllocatorT>,
+    typename MessageMemoryStrategyT = rclcpp::message_memory_strategy::MessageMemoryStrategy<
+      CallbackMessageT,
+      AllocatorT
+    >
+  >
+  std::shared_ptr<SubscriptionT>
+  create_priority_subscription(
+    const std::string & topic_name,
+    const rclcpp::QoS & qos,
+    CallbackT && callback,
+    const int callback_priority,
+    const SubscriptionOptionsWithAllocator<AllocatorT> & options =
+    SubscriptionOptionsWithAllocator<AllocatorT>(),
+    typename MessageMemoryStrategyT::SharedPtr msg_mem_strat = (
+      MessageMemoryStrategyT::create_default()
+    )
+  );
   /// Create a timer.
   /**
    * \param[in] period Time interval between triggers of the callback.

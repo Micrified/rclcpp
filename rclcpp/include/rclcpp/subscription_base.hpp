@@ -66,7 +66,8 @@ public:
    * \param[in] node_base NodeBaseInterface pointer used in parts of the setup.
    * \param[in] type_support_handle rosidl type support struct, for the Message type of the topic.
    * \param[in] topic_name Name of the topic to subscribe to.
-   * \param[in] subscription_options options for the subscription.
+   * \param[in] subscription_options options for the subscription. 
+   * \param[in] priority of the callback associated with this subscription instance (transient field)
    * \param[in] is_serialized is true if the message will be delivered still serialized
    */
   RCLCPP_PUBLIC
@@ -75,6 +76,7 @@ public:
     const rosidl_message_type_support_t & type_support_handle,
     const std::string & topic_name,
     const rcl_subscription_options_t & subscription_options,
+    const int callback_priority = -1,
     bool is_serialized = false);
 
   /// Default destructor.
@@ -210,6 +212,14 @@ public:
   bool
   is_serialized() const;
 
+  /// Returns the priority associated with the subscription instance
+  /**
+   * \return integer denoting priority value of the subscription callback
+   */
+  RCLCPP_PUBLIC
+  int
+  get_callback_priority() const;
+
   /// Get matching publisher count.
   /** \return The number of publishers on this topic. */
   RCLCPP_PUBLIC
@@ -303,6 +313,7 @@ private:
   RCLCPP_DISABLE_COPY(SubscriptionBase)
 
   rosidl_message_type_support_t type_support_;
+  int callback_priority_;
   bool is_serialized_;
 
   std::atomic<bool> subscription_in_use_by_wait_set_{false};

@@ -87,7 +87,8 @@ create_subscription(
   ),
   typename MessageMemoryStrategyT::SharedPtr msg_mem_strat = (
     MessageMemoryStrategyT::create_default()
-  )
+  ),
+  const int callback_priority = -1
 )
 {
   using rclcpp::node_interfaces::get_node_topics_interface;
@@ -142,7 +143,7 @@ create_subscription(
     subscription_topic_stats
   );
 
-  auto sub = node_topics->create_subscription(topic_name, factory, qos);
+  auto sub = node_topics->create_subscription(topic_name, factory, qos, callback_priority);
   node_topics->add_subscription(sub, options.callback_group);
 
   return std::dynamic_pointer_cast<SubscriptionT>(sub);

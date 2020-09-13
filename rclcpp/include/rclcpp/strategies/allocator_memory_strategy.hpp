@@ -288,6 +288,7 @@ public:
         // Otherwise it is safe to set and return the any_exec
         any_exec.subscription = subscription;
         any_exec.callback_group = group;
+        any_exec.callback_priority = subscription->get_callback_priority();
         any_exec.node_base = get_node_by_group(group, weak_nodes);
         subscription_handles_.erase(it);
         return;

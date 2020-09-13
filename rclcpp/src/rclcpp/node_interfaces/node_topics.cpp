@@ -74,10 +74,11 @@ rclcpp::SubscriptionBase::SharedPtr
 NodeTopics::create_subscription(
   const std::string & topic_name,
   const rclcpp::SubscriptionFactory & subscription_factory,
-  const rclcpp::QoS & qos)
+  const rclcpp::QoS & qos,
+  const int callback_priority)
 {
   // Create the MessageT specific Subscription using the factory, but return a SubscriptionBase.
-  return subscription_factory.create_typed_subscription(node_base_, topic_name, qos);
+  return subscription_factory.create_typed_subscription(node_base_, topic_name, qos, callback_priority);
 }
 
 void

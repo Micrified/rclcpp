@@ -36,12 +36,14 @@ SubscriptionBase::SubscriptionBase(
   const rosidl_message_type_support_t & type_support_handle,
   const std::string & topic_name,
   const rcl_subscription_options_t & subscription_options,
+  const int callback_priority,
   bool is_serialized)
 : node_base_(node_base),
   node_handle_(node_base_->get_shared_rcl_node_handle()),
   use_intra_process_(false),
   intra_process_subscription_id_(0),
   type_support_(type_support_handle),
+  callback_priority_(callback_priority),
   is_serialized_(is_serialized)
 {
   auto custom_deletor = [node_handle = this->node_handle_](rcl_subscription_t * rcl_subs)
@@ -186,6 +188,12 @@ bool
 SubscriptionBase::is_serialized() const
 {
   return is_serialized_;
+}
+
+int
+SubscriptionBase::get_callback_priority () const
+{
+  return callback_priority_;
 }
 
 size_t

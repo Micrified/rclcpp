@@ -58,7 +58,8 @@ struct SubscriptionFactory
     rclcpp::SubscriptionBase::SharedPtr(
       rclcpp::node_interfaces::NodeBaseInterface * node_base,
       const std::string & topic_name,
-      const rclcpp::QoS & qos)>;
+      const rclcpp::QoS & qos,
+      const int callback_priority)>;
 
   const SubscriptionFactoryFunction create_typed_subscription;
 };
@@ -101,7 +102,8 @@ create_subscription_factory(
     [options, msg_mem_strat, any_subscription_callback, subscription_topic_stats](
       rclcpp::node_interfaces::NodeBaseInterface * node_base,
       const std::string & topic_name,
-      const rclcpp::QoS & qos
+      const rclcpp::QoS & qos,
+      const int priority
     ) -> rclcpp::SubscriptionBase::SharedPtr
     {
       using rclcpp::Subscription;
@@ -115,7 +117,9 @@ create_subscription_factory(
         any_subscription_callback,
         options,
         msg_mem_strat,
-        subscription_topic_stats);
+        subscription_topic_stats,
+        priority);
+      
       // This is used for setting up things like intra process comms which
       // require this->shared_from_this() which cannot be called from
       // the constructor.

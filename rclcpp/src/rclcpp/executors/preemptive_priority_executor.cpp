@@ -103,10 +103,10 @@ void PreemptivePriorityExecutor::spin ()
 	//       priorities are required beforehand
 	while (rclcpp::ok(this->context_) && spinning.load()) {
 
-		// Wait for work ... 
+		// Wait for work ...
+		std::cout << "Waiting for work" << std::endl; 
 		wait_for_work(d_timeout_ns);
-
-		//std::cout << "Executor: Work has arrived!" << std::endl;
+		std::cout << "Executor: Work has arrived!" << std::endl;
 
 		// Clear the task queue of completed tasks
 		task_queue_p = this->filter_completed_tasks(task_queue_p);
@@ -126,10 +126,10 @@ void PreemptivePriorityExecutor::spin ()
 
 			// If the executable is a timer, then do not allow reentrant behavior 
 			if (nullptr != any_executable.timer) {
-
+				std::lock_guard<std::mutex> temp_lock(d_wait_mutex);
 				// If it is already accounted for then do not consider it
-				if (0 != d_scheduled_timers.count(any_executable.timer)) {
-					//std::cout << "Executor: Is a timer and already taken, will wait ..." << std::endl;
+				if (0 < d_scheduled_timers.count(any_executable.timer)) {
+					std::cout << "Executor: Is a timer and already taken, will wait ..." << std::endl;
 					// If it has a non-null callback group then reset it
 					if (nullptr != any_executable.callback_group) {
 						any_executable.callback_group->can_be_taken_from().store(true);
@@ -148,6 +148,9 @@ void PreemptivePriorityExecutor::spin ()
 			int new_task_priority = this->get_executable_priority(any_executable);
 
 			//std::cout << "Executor: Ready executable with priority " << new_task_priority << std::endl;
+			std::cout << "Executor: Pushing new task to queue: ";
+			show_any_executable(&any_executable);
+			std::cout << std::endl;
 
 			// Create a new task instance
 			TaskInstance *new_task_ptr = new TaskInstance(new_task_priority, std::move(any_executable));
@@ -171,7 +174,10 @@ void PreemptivePriorityExecutor::spin ()
 		// If this task is busy running - do nothing
 		if (highest_priority_callback->is_running() == true)
 		{
-			std::cout << "Executor: Highest prio callback is busy still!" << std::endl;
+			AnyExecutable any = highest_priority_callback->any_executable();
+			std::cout << "Executor: Highest prio callback: ";
+			show_any_executable(&any);
+			std::cout << " is busy still!" << std::endl;
 			continue;
 		} else {
 			std::cout << "Executor: New unlaunched thread created!" << std::endl;
@@ -190,12 +196,12 @@ void PreemptivePriorityExecutor::spin ()
 			 std::string(std::strerror(errno)));
 		}
 
-		std::cout << "Executor: Set thread priority and about to detach!" << std::endl;
+		//std::cout << "Executor: Set thread priority and about to detach!" << std::endl;
 
 		// Detach the thread
 		new_task_thread.detach();
 
-		std::cout << "Executor: Detached!" << std::endl;
+		//std::cout << "Executor: Detached!" << std::endl;
 	}
 
 	// Busy wait for any outstanding work to finish (in case of spinning set to false)
@@ -243,7 +249,8 @@ void PreemptivePriorityExecutor::show_any_executable (AnyExecutable *any_executa
 		return;
 	}
 	if (nullptr != any_executable->subscription) {
-		std::cout << "<sub[" << any_executable->subscription->get_topic_name() << "]>";
+		std::cout << "<sub[" << any_executable->subscription->get_topic_name()
+			<< ", " << any_executable->callback_priority << "]>";
 		return;
 	}
 	std::cout << "<other[?]>";
@@ -271,7 +278,9 @@ TaskPriorityQueue *PreemptivePriorityExecutor::filter_completed_tasks (TaskPrior
 		//       then it is a bad thing - but shouldn't happen
 		//       since the last access must be to set is finished
 		if (task_p->is_finished()) {
-			std::cout << "Executor: detected thread done!" << std::endl;
+			std::cout << "Executor: detected thread for ";
+			show_any_executable(&any_executable);
+			std::cout << " done!" << std::endl;
 			delete task_p;
 			continue;
 		}
@@ -307,13 +316,14 @@ int PreemptivePriorityExecutor::get_executable_priority (AnyExecutable &any_exec
 
 	// If it is a subscription, lookup the priority in the map
 	if (nullptr != any_executable.subscription) {
-		const char *node_name = any_executable.node_base->get_name();
-		const char *subscription_topic = any_executable.subscription->get_topic_name();
-		if (false == d_callback_priority_map_p->get_priority_for_node_on_subscription(
-			node_name, subscription_topic, &priority))
-		{
-			priority = -1;
-		}
+		return any_executable.callback_priority;
+		// const char *node_name = any_executable.node_base->get_name();
+		// const char *subscription_topic = any_executable.subscription->get_topic_name();
+		// if (false == d_callback_priority_map_p->get_priority_for_node_on_subscription(
+		// 	node_name, subscription_topic, &priority))
+		// {
+		// 	priority = -1;
+		// }
 	}
 
 	return priority;
@@ -325,31 +335,35 @@ void PreemptivePriorityExecutor::run (rclcpp::executors::PreemptivePriorityExecu
 	std::set<rclcpp::TimerBase::SharedPtr> *scheduled_timers = executor->scheduled_timers();
 	int priority = task_p->task_priority();
 	AnyExecutable any_executable = task_p->any_executable();
+	std::mutex *wait_mutex_p = executor->wait_mutex();
 
 	// Get thread info
 	// pthread_getschedparam(thread_id, &policy, &sch);
 
 	// Print: Start
-	std::cout << "[" << thread_id << "]<" << priority << "> " << "Starting ..." 
-			  << std::endl;
+	// std::cout << "[" << thread_id << "]<" << priority << "> " << "Starting ..." 
+	// 		  << std::endl;
 
 	// Work
 	executor->execute_any_executable(any_executable);
 
 	// If it is a timer, don't forget to remove it from the scheduled timers set
-	if (nullptr != any_executable.timer) {
-		auto it = scheduled_timers->find(any_executable.timer);
-		if (it != scheduled_timers->end()) {
-			scheduled_timers->erase(it);
+	{
+		std::lock_guard<std::mutex> temp_lock(*wait_mutex_p);
+		if (nullptr != any_executable.timer) {
+			auto it = scheduled_timers->find(any_executable.timer);
+			if (it != scheduled_timers->end()) {
+				scheduled_timers->erase(it);
+			}
 		}
 	}
 
 	// Clear the callback group
-	any_executable.callback_group.reset();
+	any_executable.callback_group.reset();		
 
 	// Print: End
-	std::cout << "[" << thread_id << "]<" << priority << "> " << "Done " 
-				<< std::endl;
+	// std::cout << "[" << thread_id << "]<" << priority << "> " << "Done " 
+	// 			<< std::endl;
 
 
     // Set value

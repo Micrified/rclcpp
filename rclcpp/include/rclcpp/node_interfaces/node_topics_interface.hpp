@@ -68,7 +68,8 @@ public:
   create_subscription(
     const std::string & topic_name,
     const rclcpp::SubscriptionFactory & subscription_factory,
-    const rclcpp::QoS & qos) = 0;
+    const rclcpp::QoS & qos,
+    const int callback_priority = -1) = 0;
 
   RCLCPP_PUBLIC
   virtual
