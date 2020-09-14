@@ -69,7 +69,6 @@ void PreemptivePriorityExecutor::spin ()
 {
 	sched_param sch, sch_old;
 	int policy, policy_old;
-	AnyExecutable any_executable;
 
 	// TaskInstance priority queue
 	TaskPriorityQueue *task_queue_p = new TaskPriorityQueue(task_compare);
@@ -101,12 +100,15 @@ void PreemptivePriorityExecutor::spin ()
 	//       wait and set condition variables to true in order to
 	//       wake certain threads. Would need to know how many
 	//       priorities are required beforehand
+	off_t count = 0;
 	while (rclcpp::ok(this->context_) && spinning.load()) {
-
+		AnyExecutable any_executable;
+		count++;
+		//std::cout << "\rExecutor " << count;
 		// Wait for work ...
-		std::cout << "Waiting for work" << std::endl; 
-		wait_for_work(d_timeout_ns);
-		std::cout << "Executor: Work has arrived!" << std::endl;
+		//std::cout << "Waiting for work" << std::endl; 
+		wait_for_work(std::chrono::nanoseconds(-1));
+		//std::cout << "Executor: Work has arrived!" << std::endl;
 
 		// Clear the task queue of completed tasks
 		task_queue_p = this->filter_completed_tasks(task_queue_p);
@@ -129,7 +131,7 @@ void PreemptivePriorityExecutor::spin ()
 				std::lock_guard<std::mutex> temp_lock(d_wait_mutex);
 				// If it is already accounted for then do not consider it
 				if (0 < d_scheduled_timers.count(any_executable.timer)) {
-					std::cout << "Executor: Is a timer and already taken, will wait ..." << std::endl;
+					//std::cout << "Executor: Is a timer and already taken, will wait ..." << std::endl;
 					// If it has a non-null callback group then reset it
 					if (nullptr != any_executable.callback_group) {
 						any_executable.callback_group->can_be_taken_from().store(true);
@@ -148,9 +150,9 @@ void PreemptivePriorityExecutor::spin ()
 			int new_task_priority = this->get_executable_priority(any_executable);
 
 			//std::cout << "Executor: Ready executable with priority " << new_task_priority << std::endl;
-			std::cout << "Executor: Pushing new task to queue: ";
-			show_any_executable(&any_executable);
-			std::cout << std::endl;
+			//std::cout << "Executor: Pushing new task to queue: ";
+			//show_any_executable(&any_executable);
+			//std::cout << std::endl;
 
 			// Create a new task instance
 			TaskInstance *new_task_ptr = new TaskInstance(new_task_priority, std::move(any_executable));
@@ -160,7 +162,7 @@ void PreemptivePriorityExecutor::spin ()
 		}
 
 		if (task_queue_p->size() == 0) {
-			std::cout << "Executor: Nothing to do -> going to wait again ..." << std::endl;
+			//std::cout << "Executor: Nothing to do -> going to wait again ..." << std::endl;
 			continue;
 		}
 
