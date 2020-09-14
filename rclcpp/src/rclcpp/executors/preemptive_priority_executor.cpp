@@ -138,7 +138,7 @@ void PreemptivePriorityExecutor::spin ()
 
 		// If a new executable is waiting: Place it into the priority queue
 		if (true == this->get_next_ready_executable(any_executable)) {
-
+			bool should_insert_new_task = true;
 			//std::cout << "Executor: Executable is ready!" << std::endl;
 
 			// If the executable is a timer, then do not allow reentrant behavior 
@@ -151,29 +151,33 @@ void PreemptivePriorityExecutor::spin ()
 					if (nullptr != any_executable.callback_group) {
 						any_executable.callback_group->can_be_taken_from().store(true);
 					}
-					continue;
-				}
 
-				// Insert the timer into the timer set
-				d_scheduled_timers.insert(any_executable.timer);
+					// This timer already exists - so don't insert a new task
+					should_insert_new_task = false;
+				} else {
+					// Insert the timer into the timer set
+					d_scheduled_timers.insert(any_executable.timer);
+				}
 			}
 
 			// Note: You have to remove the timer from the callback group after,
 			//        the launched thread will do this
 
 			// Compute a priority for this callback
-			int new_task_priority = this->get_executable_priority(any_executable);
+			if (should_insert_new_task) {
+				int new_task_priority = this->get_executable_priority(any_executable);
 
-			//std::cout << "Executor: Ready executable with priority " << new_task_priority << std::endl;
-			//std::cout << "Executor: Pushing new task to queue: ";
-			//show_any_executable(&any_executable);
-			//std::cout << std::endl;
+				//std::cout << "Executor: Ready executable with priority " << new_task_priority << std::endl;
+				//std::cout << "Executor: Pushing new task to queue: ";
+				//show_any_executable(&any_executable);
+				//std::cout << std::endl;
 
-			// Create a new task instance
-			TaskInstance *new_task_ptr = new TaskInstance(new_task_priority, std::move(any_executable));
+				// Create a new task instance
+				TaskInstance *new_task_ptr = new TaskInstance(new_task_priority, std::move(any_executable));
 
-			// Insert the callback into the priority heap
-			task_queue_p->push(new_task_ptr);
+				// Insert the callback into the priority heap
+				task_queue_p->push(new_task_ptr);				
+			}
 		}
 
 		if (task_queue_p->size() == 0) {
@@ -213,17 +217,20 @@ void PreemptivePriorityExecutor::spin ()
 			 std::string(std::strerror(errno)));
 		}
 
-		// // Assign the thread to a dedicated CPU
-		// CPU_ZERO(&cpu_set);
-		// CPU_SET(2, &cpu_set);
+		// Assign the thread to a dedicated CPU
+		CPU_ZERO(&cpu_set);
+		CPU_SET(2, &cpu_set);
 
-		// // Set CPU affinity
-		// if (pthread_setaffinity_np(new_task_thread.native_handle(), sizeof(cpu_set_t), &cpu_set) != 0) {
-		// 	throw std::runtime_error(std::string("pthread_setaffinity_np: ") +
-		// 		std::string(std::strerror(errno)));
-		// }
+		// Set CPU affinity
+		if (pthread_setaffinity_np(new_task_thread.native_handle(), sizeof(cpu_set_t), &cpu_set) != 0) {
+			throw std::runtime_error(std::string("pthread_setaffinity_np: ") +
+				std::string(std::strerror(errno)));
+		}
 
-		//std::cout << "Executor: Set thread priority and about to detach!" << std::endl;
+		AnyExecutable any = highest_priority_callback->any_executable();
+		//std::cout << "Executor: Launching ";
+		//show_any_executable(&any);
+		//std::cout << std::endl;
 
 		// Detach the thread
 		new_task_thread.detach();
@@ -262,7 +269,7 @@ void PreemptivePriorityExecutor::spin ()
 
 static bool task_compare (TaskInstance *a, TaskInstance *b)
 {
-	return (a->task_priority() < b->task_priority());
+	return (a->task_priority() > b->task_priority());
 }
 
 void PreemptivePriorityExecutor::show_any_executable (AnyExecutable *any_executable)
