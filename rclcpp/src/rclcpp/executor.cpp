@@ -359,33 +359,42 @@ void Executor::cancel ()
 
 void Executor::execute_any_executable (AnyExecutable &any_exec)
 {
+	size_t n_fields_set = 0;
+
 	// Don't do anything if not spinning
 	if (false == spinning.load()) {
 		return;
 	}
 
+	// Ensure that only one field is set
+
 	// If timer field set -> execute it
 	if (any_exec.timer) {
+		n_fields_set++;
 		execute_timer(any_exec.timer);
 	}
 
 	// If subscription field set -> execute it
 	if (any_exec.subscription) {
+		n_fields_set++;
 		execute_subscription(any_exec.subscription);
 	}
 
 	// If service field set -> execute it
 	if (any_exec.service) {
+		n_fields_set++;
 		execute_service(any_exec.service);
 	}
 
 	// If client field set -> execute it
 	if (any_exec.client) {
+		n_fields_set++;
 		execute_client(any_exec.client);
 	}
 
 	// If waitable field set -> execute it
 	if (any_exec.waitable) {
+		n_fields_set++;
 		any_exec.waitable->execute();
 	}
 
@@ -395,6 +404,11 @@ void Executor::execute_any_executable (AnyExecutable &any_exec)
 	// Awaken wait: Might need to be recalculated or work that was blocked is now ready
 	if (RCL_RET_OK != rcl_trigger_guard_condition(&interrupt_guard_condition_)) {
 		throw std::runtime_error(rcl_get_error_string().str);
+	}
+
+	// Check: Not more than one any_exec field was set
+	if (n_fields_set > 1) {
+		throw std::runtime_error("More than one executable type set in executable entity!");
 	}
 }
 
