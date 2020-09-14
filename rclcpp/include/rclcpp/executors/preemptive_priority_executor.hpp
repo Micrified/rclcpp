@@ -28,6 +28,7 @@
 #include <queue>
 #include <set>
 #include <functional>
+#include <sched.h>
 
 // RCLCPP headers
 #include "rclcpp/executor.hpp"

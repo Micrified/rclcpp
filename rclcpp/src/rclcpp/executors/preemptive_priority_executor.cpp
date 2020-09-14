@@ -69,6 +69,7 @@ void PreemptivePriorityExecutor::spin ()
 {
 	sched_param sch, sch_old;
 	int policy, policy_old;
+	cpu_set_t cpu_set;
 
 	// TaskInstance priority queue
 	TaskPriorityQueue *task_queue_p = new TaskPriorityQueue(task_compare);
@@ -81,13 +82,27 @@ void PreemptivePriorityExecutor::spin ()
 	// Defer: On exit, we want to stop spinning
 	RCLCPP_SCOPE_EXIT(this->spinning.store(false););
 
+	// Allocate a single CPU
+	CPU_ZERO(&cpu_set);
+	CPU_SET(1, &cpu_set);
+
+	// Set CPU affinity
+	if (pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpu_set) != 0) {
+		throw std::runtime_error(std::string("pthread_setaffinity_np: ") +
+			std::string(std::strerror(errno)));
+	}
+	// if (sched_setaffinity(0, sizeof(cpu_set_t), &cpu_set) != 0) {
+	// 	throw std::runtime_error(std::string("sched_setaffinity: ") +
+	// 		std::string(std::strerror(errno)));
+	// }
+
 	// Get the current policy and save it
 	pthread_getschedparam(pthread_self(), &policy, &sch);
 	sch_old = sch;
 	policy_old = policy;
 
 	// Apply new policy (scheduler runs at maximum priority)
-	sch.sched_priority = 99;
+	sch.sched_priority = 60;
 	if (0 != pthread_setschedparam(pthread_self(), SCHED_FIFO, &sch)) {
 		throw std::runtime_error(std::string("pthread_setschedparam: ") +
 		 std::string(std::strerror(errno)));
@@ -177,12 +192,12 @@ void PreemptivePriorityExecutor::spin ()
 		if (highest_priority_callback->is_running() == true)
 		{
 			AnyExecutable any = highest_priority_callback->any_executable();
-			std::cout << "Executor: Highest prio callback: ";
-			show_any_executable(&any);
-			std::cout << " is busy still!" << std::endl;
+			//std::cout << "Executor: Highest prio callback: ";
+			//show_any_executable(&any);
+			//std::cout << " is busy still!" << std::endl;
 			continue;
 		} else {
-			std::cout << "Executor: New unlaunched thread created!" << std::endl;
+			//std::cout << "Executor: New unlaunched thread created!" << std::endl;
 			highest_priority_callback->set_is_running(true);
 		}
 
@@ -197,6 +212,16 @@ void PreemptivePriorityExecutor::spin ()
 			throw std::runtime_error(std::string("pthread_setschedparam: ") +
 			 std::string(std::strerror(errno)));
 		}
+
+		// // Assign the thread to a dedicated CPU
+		// CPU_ZERO(&cpu_set);
+		// CPU_SET(2, &cpu_set);
+
+		// // Set CPU affinity
+		// if (pthread_setaffinity_np(new_task_thread.native_handle(), sizeof(cpu_set_t), &cpu_set) != 0) {
+		// 	throw std::runtime_error(std::string("pthread_setaffinity_np: ") +
+		// 		std::string(std::strerror(errno)));
+		// }
 
 		//std::cout << "Executor: Set thread priority and about to detach!" << std::endl;
 
@@ -280,9 +305,9 @@ TaskPriorityQueue *PreemptivePriorityExecutor::filter_completed_tasks (TaskPrior
 		//       then it is a bad thing - but shouldn't happen
 		//       since the last access must be to set is finished
 		if (task_p->is_finished()) {
-			std::cout << "Executor: detected thread for ";
-			show_any_executable(&any_executable);
-			std::cout << " done!" << std::endl;
+			//std::cout << "Executor: detected thread for ";
+			//show_any_executable(&any_executable);
+			//std::cout << " done!" << std::endl;
 			delete task_p;
 			continue;
 		}
@@ -333,9 +358,9 @@ int PreemptivePriorityExecutor::get_executable_priority (AnyExecutable &any_exec
 
 void PreemptivePriorityExecutor::run (rclcpp::executors::PreemptivePriorityExecutor *executor, TaskInstance *task_p)
 {
-	int thread_id = pthread_self();
+	//int thread_id = pthread_self();
 	std::set<rclcpp::TimerBase::SharedPtr> *scheduled_timers = executor->scheduled_timers();
-	int priority = task_p->task_priority();
+	//int priority = task_p->task_priority();
 	AnyExecutable any_executable = task_p->any_executable();
 	std::mutex *wait_mutex_p = executor->wait_mutex();
 

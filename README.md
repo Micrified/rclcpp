@@ -31,3 +31,6 @@ and [Writing a simple service and client](https://index.ros.org/doc/ros2/Tutoria
 contain some examples of rclcpp APIs in use.
 
 Use of the preemptive priority extension will be added later
+
+
+You need to run the preemptive-priority-executor with **root** permissions because it is required to set thread priority with the kernel. I recommend simply running the entire process from a root shell. Begin a root shell with `sudo bash`. Make sure to source the ROS2 and workspace files again if you do this.
