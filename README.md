@@ -1,36 +1,104 @@
-# rclcpp - preemptive-priority-extension
+# RCLCPP - Preemptive-Priority Extension
 
-This repository contains the source code for the ROS Client Library for C++ package. It also contains the preemptive priority extension which: 
+This repository is a fork of the ROS Client for C++ package. It contains the preemptive-priority-executor (PPE) extension. This extension: 
 
-1. Extends TimerBase, and affiliated timer source files to allow priority values to be assigned to timers
-2. Refactors the Executor class, adjusting some of the original source code, and exposing more internal fields than the original does.
-3. Introduces the preemptive priority executor, along with associated support classes
+1. Extends `TimerBase` and related classes to allow priority values to be assigned to instances of these classes.
+2. Extends `SubscriptionBase` and related classes to allow priority values to be assigned to instances of these classes.
+3. Adds a new executor sub-class, called `PreemptivePriorityExecutor`
+
+---
+
+## Installation 
+
+### Source code
+
+To use the PPE, you need to be building ROS2 from source. Simply add this repository as a remote in `ros2_<version>/src/ros2/rclcpp`, and then pull/fetch from the new remote's master branch!
+
+### Building
+
+Build this as you would ROS2. If you want to rebuild ROS2 entirely, then run `colcon build --symlink-install` from your top-level `ros2_<version>` directory. 
+
+It is faster to simply specify the `rclcpp` package. Do so as follows: `colcon build --packages-select rclcpp --symlink-install`
+
+---
 
 ## Usage
 
-`#include "rclcpp/rclcpp.hpp"` allows use of the most common elements of the ROS 2 system.
+Use `#include "rclcpp/rclcpp.hpp"` to access common elements of the ROS2 system. You can also visit the [rclcpp API documentation](http://docs.ros2.org/latest/api/rclcpp/). 
 
-Visit the [rclcpp API documentation](http://docs.ros2.org/latest/api/rclcpp/) for a complete list of its main components.
+No special headers are needed to use the extension! Simple declare a preemptive priority executor and use it like any other!
 
-Documentation for the extensions will be provided later in the wiki.
+```
+// Init the executor
+rclcpp::executors::PreemptivePriorityExecutor my_exec;
 
-### Installation
+// Add node
+my_exec.add_node(node);
 
-If you want to use the preemptive priority extension, please add this repository as a remote in your ROS2's `rclcpp` directory within `src`. This means you must be building ROS from scratch. 
+// Spin
+my_exec.spin();
+```
 
-Then, switch to the master branch under the new remote and make sure to pull/fetch. 
+**Note**: You *need* to be root to use the PPE. It's best to start a root shell before running your ROS2 application (e.g. `sudo bash`). You will need to source the ROS2 scripts again though (`. install/setup.sh`)
 
-You may build ROS2 again using: `colcon build --symlink-install` from the top-level ROS2 directory. 
-
-It is faster to simply build RCLCPP again. To do this, just run: `colcon build --packages-select rclcpp --symlink-install` instead
-
-### Examples
+---
+## Examples
 
 The ROS 2 tutorials [Writing a simple publisher and subscriber](https://index.ros.org/doc/ros2/Tutorials/Writing-A-Simple-Cpp-Publisher-And-Subscriber/)
 and [Writing a simple service and client](https://index.ros.org/doc/ros2/Tutorials/Writing-A-Simple-Cpp-Service-And-Client/)
 contain some examples of rclcpp APIs in use.
 
-Use of the preemptive priority extension will be added later
+For practical examples using the PPE, see [the examples repository](https://github.com/Micrified/RCLCPP-PPE-Examples).
 
+# RCLCPP - Preemptive-Priority Extension
 
-You need to run the preemptive-priority-executor with **root** permissions because it is required to set thread priority with the kernel. I recommend simply running the entire process from a root shell. Begin a root shell with `sudo bash`. Make sure to source the ROS2 and workspace files again if you do this.
+This repository is a fork of the ROS Client for C++ package. It contains the preemptive-priority-executor (PPE) extension. This extension: 
+
+1. Extends `TimerBase` and related classes to allow priority values to be assigned to instances of these classes.
+2. Extends `SubscriptionBase` and related classes to allow priority values to be assigned to instances of these classes.
+3. Adds a new executor sub-class, called `PreemptivePriorityExecutor`
+
+---
+
+## Installation 
+
+### Source code
+
+To use the PPE, you need to be building ROS2 from source. Simply add this repository as a remote in `ros2_<version>/src/ros2/rclcpp`, and then pull/fetch from the new remote's master branch!
+
+### Building
+
+Build this as you would ROS2. If you want to rebuild ROS2 entirely, then run `colcon build --symlink-install` from your top-level `ros2_<version>` directory. 
+
+It is faster to simply specify the `rclcpp` package. Do so as follows: `colcon build --packages-select rclcpp --symlink-install`
+
+---
+
+## Usage
+
+Use `#include "rclcpp/rclcpp.hpp"` to access common elements of the ROS2 system. You can also visit the [rclcpp API documentation](http://docs.ros2.org/latest/api/rclcpp/). 
+
+No special headers are needed to use the extension! Simple declare a preemptive priority executor and use it like any other!
+
+```
+// Init the executor
+rclcpp::executors::PreemptivePriorityExecutor my_exec;
+
+// Add node
+my_exec.add_node(node);
+
+// Spin
+my_exec.spin();
+```
+
+**Note**: You *need* to be root to use the PPE. It's best to start a root shell before running your ROS2 application (e.g. `sudo bash`). You will need to source the ROS2 scripts again though (`. install/setup.sh`)
+
+---
+## Examples
+
+The ROS 2 tutorials [Writing a simple publisher and subscriber](https://index.ros.org/doc/ros2/Tutorials/Writing-A-Simple-Cpp-Publisher-And-Subscriber/)
+and [Writing a simple service and client](https://index.ros.org/doc/ros2/Tutorials/Writing-A-Simple-Cpp-Service-And-Client/)
+contain some examples of rclcpp APIs in use.
+
+For practical examples using the PPE, see [the examples repository](https://github.com/Micrified/RCLCPP-PPE-Examples).
+
