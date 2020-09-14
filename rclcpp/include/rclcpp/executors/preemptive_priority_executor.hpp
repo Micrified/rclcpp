@@ -36,6 +36,44 @@
 #include "rclcpp/visibility_control.hpp"
 
 
+namespace rclcpp
+{
+namespace executors
+{
+
+
+/*
+ *******************************************************************************
+ *                              Type Definitions                               *
+ *******************************************************************************
+*/
+
+// Forward declarations
+class PreemptivePriorityExecutor;
+class Job;
+
+// Type names for the thread main function signature
+using thread_func_t = void(rclcpp::executors::PreemptivePriorityExecutor *, rclcpp::executors::Job *);
+using thread_func_p = void(*)(rclcpp::executors::PreemptivePriorityExecutor *, rclcpp::executors::Job *);
+
+// I didn't want to do this but the type is just too long
+typedef std::priority_queue<Job *, std::vector<Job *>, std::function<bool(Job *, Job *)>> JobPriorityQueue;
+
+// Range of priorities the executor may use for threads: [l_bound, u_bound]
+typedef struct {
+	int l_bound;
+	int u_bound;
+} thread_priority_range_t;
+
+// Characteristic of the executor scheduler
+typedef enum {
+	P_FP,          // Preemptive fixed-priority
+	NP_FP,         // Non-preemptive fixed-priority
+	P_EDF,         // Preemptive earliest-deadline-first
+	NP_EDF         // Non-preemptive earliest-deadline-first
+} scheduling_policy_t;
+
+
 /*
  *******************************************************************************
  *                         Complete Class Definitions                          *
@@ -43,39 +81,35 @@
 */
 
 
-namespace rclcpp
-{
-namespace executors
-{
-
-class PreemptivePriorityExecutor;
-class TaskInstance;
-
-// Type names for the thread main function signature
-using thread_func_t = void(rclcpp::executors::PreemptivePriorityExecutor *, rclcpp::executors::TaskInstance *);
-using thread_func_p = void(*)(rclcpp::executors::PreemptivePriorityExecutor *, rclcpp::executors::TaskInstance *);
-
-class TaskInstance {
+/// Instance of a running task. A task doesn't quite exist in ROS, so this wraps a callback instead
+/**
+ * This class is simply a wrapper around the metadata needed to manage a ready callback. 
+ * Jobs have the following fields
+ * - callback_priority : A priority value used to sort this class within a queue
+ * - any_executable    : A wrapper around a ROS executable entity (timer/subscription/etc ...)
+ *
+ * Jobs have the following state flags: 
+ * - running: If dispatched onto a thread. Otherwise held in a priority queue
+ * - finished: If marked as such by the assigned thread
+ */
+class Job {
 public:
-	TaskInstance (int task_priority, AnyExecutable any_executable):
-		d_task_priority(task_priority),
+	Job (int callback_priority, AnyExecutable any_executable):
+		d_callback_priority(callback_priority),
 		d_any_executable(any_executable),
 		d_is_running(false),
 		d_is_finished(false)
-	{
+	{}
 
-	}
-
-	TaskInstance (const TaskInstance &other)
+	Job (const Job &other)
 	{
-		d_task_priority = other.d_task_priority;
+		d_callback_priority = other.d_callback_priority;
 		d_is_running = other.d_is_running;
 		d_is_finished.store(other.d_is_finished.load());
 	}
 
-	~TaskInstance ()
-	{
-	}
+	~Job ()
+	{}
 
 	void set_is_running (bool is_running)
 	{
@@ -96,9 +130,9 @@ public:
 		return d_is_finished.load();
 	}
 
-	int task_priority ()
+	int callback_priority ()
 	{
-		return d_task_priority;
+		return d_callback_priority;
 	}
 
 	AnyExecutable any_executable ()
@@ -107,63 +141,14 @@ public:
 	}
 
 private:
-	int d_task_priority;                                  // Priority given to task
-	AnyExecutable d_any_executable;                       // Copy of the executable object
-	bool d_is_running;                                    // Whether or not thread is running
-	std::atomic<bool> d_is_finished;                      // Whether or not the thread is finished
+	int d_callback_priority;
+	AnyExecutable d_any_executable;
+	bool d_is_running;
+
+	// Protected as accessed by more than one thread
+	std::atomic<bool> d_is_finished;
 };
 
-class CallbackPriorityMap {
-public:
-	CallbackPriorityMap ():
-		d_map_p(nullptr)
-	{
-		d_map_p = new std::map<std::string, int>();
-	}
-
-	~CallbackPriorityMap ()
-	{
-		d_map_p->clear();
-		delete d_map_p;
-	}
-
-	void set_priority_for_node_on_subscription (const char *node_name, 
-		const char *topic_name, int priority)
-	{
-		std::string key(std::string(node_name) + std::string(topic_name));
-		(*d_map_p)[key] = priority;
-	}
-
-	bool get_priority_for_node_on_subscription (const char *node_name,
-		const char *topic_name, int *priority_ptr)
-	{
-		if (nullptr == priority_ptr) {
-			return false;
-		}
-		std::string key(std::string(node_name) + std::string(topic_name));
-		std::map<std::string, int>::iterator it;
-		it = d_map_p->find(key);
-		if (it == d_map_p->end()) {
-			return false;
-		} else {
-			*priority_ptr = (*d_map_p)[key];
-		}
-		return true;
-	}
-
-private:
-	std::map<std::string, int> *d_map_p;
-};
-
-/*
- *******************************************************************************
- *                              Type Definitions                               *
- *******************************************************************************
-*/
-
-
-// I didn't want to do this but the type is just too long
-typedef std::priority_queue<TaskInstance *, std::vector<TaskInstance *>, std::function<bool(TaskInstance *, TaskInstance *)>> TaskPriorityQueue;
 
 /*
  *******************************************************************************
@@ -172,36 +157,45 @@ typedef std::priority_queue<TaskInstance *, std::vector<TaskInstance *>, std::fu
 */
 
 
+/// A multi-threaded executor with support for preemption and callback priority
+/**
+ * This class declares the preemptive priority executor. This executor is 
+ * multi-threaded and designed to be run on two cores. 
+ * 
+ * Both the executor thread itself as well as the supporting work threads are
+ * designed to be run with the Linux FIFO scheduler, with at least two avail-
+ * able cores in the following configuration
+ * 
+ * Core 0: Executor thread, at maximum priority P
+ * Core 1: All other work threads, at priorities < P
+ *
+ * The executor will perform the configuration itself, but requires two cores
+ * to be available. 
+ *
+ * Operation: This executor waits for work to become available and performs
+ * the following: 
+ * - If the work has a higher priority than the current busy job, then
+ *   a new thread with a higher priority is launched and the current 
+ *   job on core 1 is preempted automatically by the kernel
+ * - If the work has a lower priority, then it is queued in the priority
+ *   queue according to its priority. It will be run later when dequeued
+ */
 class PreemptivePriorityExecutor : public rclcpp::Executor
 {
 public:
 	RCLCPP_SMART_PTR_DEFINITIONS(PreemptivePriorityExecutor)
 
 	/*\
-	 * Creates an executor that schedules callbacks according to a
-	 * priority mapping scheme. Priorities are stored in a map which
-	 * maps a node to a map of topics and priorities. Each node has
-	 * a priority assigned to a topic (upon reception) and hence applies
-	 * it to the callback associated with the respective topic.
-	 *
-	 * Timers have a built in priority assigned during creation which is
-	 * used for the evaluation. Services and responses are not supported
-	 * and are executed with a minimum priority by default!
-	 *
-	 * \param priority_callback_map_p Pointer to the priority mapping table
+	 * Creates an instance of the preemptive priority executor.
 	 * \param options Common options for all executors
-	 * \param thread_count A suggestion for the maximum number of threads to
-	 *                     create.
-	 * \param timeout_ns Timeout in nanoseconds, which represents how long 
-	 *                   the executor waits for new work
-	 *                   value (-1) means indefinitely.
-	\*/
+	 * \param priority_range Range of allowed priorities for threads.
+	 * \param scheduler_policy Scheduling policy to use
+	\*/  
 	RCLCPP_PUBLIC 
 	PreemptivePriorityExecutor (
 		const rclcpp::ExecutorOptions &options = rclcpp::ExecutorOptions(),
-		size_t thread_count = 0,
-		std::chrono::nanoseconds timeout_ns = std::chrono::nanoseconds(-1),
-		CallbackPriorityMap *callback_priority_map_p = nullptr);
+		thread_priority_range_t priority_range = {50,99},
+		scheduling_policy_t scheduling_policy = P_FP);
 
 	/*\
 	 * Destructor for the PreemptivePriorityExecutor
@@ -210,81 +204,73 @@ public:
 	~PreemptivePriorityExecutor();
 
 	/*\
-	 *  Runs the executor
+	 * Multiplexes callbacks according to scheduling policy set in constructor
 	\*/
+	RCLCPP_PUBLIC
 	void spin() override;
-
 
 protected:
 
+	/*\
+	 * [DEBUG] Prints an ASCII form of the given AnyExecutable instance to STDOUT
+	 * \param any_executable Pointer to the executable container
+	\*/
+	RCLCPP_PUBLIC
 	void show_any_executable (AnyExecutable *any_executable);
 
 	/*\
-	 * Allocates a new max priority queue, and transfers items from queue into it if they haven't
-	 * expired. 
-	 * \param queue Pointer to the TaskPriorityQueue to filter
+	 * Allocates a fresh priority queue, and transfers unfinished jobs over to it. 
+	 * \param queue Pointer to the JobPriorityQueue instance to filter
+	 * \return Pointer to newly allocated priority queue with running instances
 	\*/
-	std::priority_queue<TaskInstance *, std::vector<TaskInstance *>, std::function<bool(TaskInstance *, TaskInstance *)>> *filter_completed_tasks (std::priority_queue<TaskInstance *, std::vector<TaskInstance *>, std::function<bool(TaskInstance *, TaskInstance *)>> *queue);
+	RCLCPP_PUBLIC
+	JobPriorityQueue *clear_finished_jobs (JobPriorityQueue *queue);
 
 	/*\
-	 * Returns the priority with which to execute the given executable. Uses the internal 
-	 * lookup table (if set) to do this
-	 * Note: This doesn't work for services and clients
-	 * \param any_executable Reference to the executable for which to lookup the priority
+	 * Returns priority assigned to given executable. 
+	 * Note: Services and clients do not yet have priorities. Returns -1 for them
+	 * \param any_executable Reference to executable 
+	 * \return Integer describing priority
 	\*/
+	RCLCPP_PUBLIC
 	int get_executable_priority (AnyExecutable &any_executable);
 
 	/*\
 	 * Runs a callback. This should be run within a worker thread at a lower priority
-	 * than the main thread
+	 * than the main executor thread
 	 * \param priority The priority assigned to this callback
-	 * \param any_executable The executable to run (copied)
+	 * \param job_p Pointer to the job instance to run
 	\*/
 	RCLCPP_PUBLIC
-	static void run (rclcpp::executors::PreemptivePriorityExecutor *executor, TaskInstance *task_p);
+	static void run (rclcpp::executors::PreemptivePriorityExecutor *executor, Job *job_p);
 
 	/*\
-	 * Returns a pointer to the wait mutex
+	 * Returns a pointer to the wait mutex (used for thread access control)
+	 * \return Pointer to mutex
 	\*/
+	RCLCPP_PUBLIC
 	std::mutex *wait_mutex ();
 
 	/*\
-	 * Returns pointer to the scheduled timers set
+	 * Returns pointer to the scheduled timers set (set of active timer instances)
+	 * \return Pointer to scheduled timer set
 	\*/
+	RCLCPP_PUBLIC
 	std::set<TimerBase::SharedPtr> *scheduled_timers ();
 
-	/*\
-	 * Returns the context
-	\*/
-	std::shared_ptr<rclcpp::Context> get_context ();
-
-	/*\
-	 * Returns true if spinning or not
-	\*/
-	bool get_spinning ();
-
 private:
+
+	// Configuration fields
+	thread_priority_range_t d_priority_range;
+	scheduling_policy_t d_scheduling_policy;
+
+	// Control mutexes
 	std::mutex d_io_mutex;
 	std::mutex d_wait_mutex;
-	size_t d_thread_count;
-	std::chrono::nanoseconds d_timeout_ns;
-
-	// Priority callback map
-	CallbackPriorityMap *d_callback_priority_map_p;
 
 	// Scheduled timers 
 	std::set<TimerBase::SharedPtr> d_scheduled_timers;
-
-	// Priority map for subscription callbacks
-	// (node name x subscription topic x priority)
-
-	// Timers have their own priority (assigned when created)
-
-	// TODO: Remove entries from the map when a node is removed
-	// TODO: Add entries to the map when a node is added (or topic)
-	// TODO: ... 
 };
-
 
 }
 }
