@@ -269,7 +269,7 @@ void PreemptivePriorityExecutor::spin ()
 
 static bool task_compare (TaskInstance *a, TaskInstance *b)
 {
-	return (a->task_priority() > b->task_priority());
+	return (a->task_priority() < b->task_priority());
 }
 
 void PreemptivePriorityExecutor::show_any_executable (AnyExecutable *any_executable)
@@ -315,6 +315,7 @@ TaskPriorityQueue *PreemptivePriorityExecutor::filter_completed_tasks (TaskPrior
 			//std::cout << "Executor: detected thread for ";
 			//show_any_executable(&any_executable);
 			//std::cout << " done!" << std::endl;
+			//std::cout << "{x}";
 			delete task_p;
 			continue;
 		}
@@ -337,27 +338,23 @@ TaskPriorityQueue *PreemptivePriorityExecutor::filter_completed_tasks (TaskPrior
 int PreemptivePriorityExecutor::get_executable_priority (AnyExecutable &any_executable)
 {
 	int priority = -1;
+	size_t n_priorities = 0;
 
 	// If it is a timer, then use the supplied value (set via the timer constructor)
 	if (nullptr != any_executable.timer) {
-		return any_executable.callback_priority;
-	}
-
-	// If no callback priority map was provided, simply return now
-	if (nullptr == d_callback_priority_map_p) {
-		return priority;
+		n_priorities++;
+		priority = any_executable.callback_priority;
 	}
 
 	// If it is a subscription, lookup the priority in the map
 	if (nullptr != any_executable.subscription) {
-		return any_executable.callback_priority;
-		// const char *node_name = any_executable.node_base->get_name();
-		// const char *subscription_topic = any_executable.subscription->get_topic_name();
-		// if (false == d_callback_priority_map_p->get_priority_for_node_on_subscription(
-		// 	node_name, subscription_topic, &priority))
-		// {
-		// 	priority = -1;
-		// }
+		n_priorities++;
+		priority = any_executable.callback_priority;
+	}
+
+
+	if (n_priorities > 1) {
+		throw std::runtime_error("An instance of AnyExecutable had more than one field set!");
 	}
 
 	return priority;
