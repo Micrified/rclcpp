@@ -219,12 +219,17 @@ protected:
 	void show_any_executable (AnyExecutable *any_executable);
 
 	/*\
-	 * Allocates a fresh priority queue, and transfers unfinished jobs over to it. 
+	 * Allocates a fresh priority queue, and transfers unfinished jobs over to it.
+	 * Will also save the number of jobs that are still running to a provided
+	 * pointer if set 
 	 * \param queue Pointer to the JobPriorityQueue instance to filter
+	 * \param n_running_jobs_p Pointer at which to store number of running jobs
 	 * \return Pointer to newly allocated priority queue with running instances
 	\*/
 	RCLCPP_PUBLIC
-	JobPriorityQueue *clear_finished_jobs (JobPriorityQueue *queue);
+	JobPriorityQueue *clear_finished_jobs (JobPriorityQueue *queue, 
+		int *n_running_jobs_p);
+
 
 	/*\
 	 * Returns priority assigned to given executable. 
