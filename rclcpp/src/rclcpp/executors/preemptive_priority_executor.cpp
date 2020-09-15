@@ -63,7 +63,7 @@ PreemptivePriorityExecutor::PreemptivePriorityExecutor (
 	d_scheduling_policy(scheduling_policy)
 {
 	// TODO: Support more than one scheduling policy
-	if (P_FP != scheduling_policy) {
+	if (P_FP != scheduling_policy && NP_FP != scheduling_policy) {
 		throw std::invalid_argument(std::string("Scheduling policy not supported!"));
 	}
 
@@ -149,12 +149,13 @@ void PreemptivePriorityExecutor::spin ()
 	//       main thread. Avoids overhead of spawning threads
 	while (rclcpp::ok(this->context_) && spinning.load()) {
 		AnyExecutable any_executable;
+		int n_running_jobs = 0;
 
 		// Wait for work ...
 		wait_for_work(std::chrono::nanoseconds(-1));
 
 		// Clear any finished jobs
-		job_queue_p = this->clear_finished_jobs(job_queue_p);
+		job_queue_p = this->clear_finished_jobs(job_queue_p, &n_running_jobs);
 
 		// Check: Was spinning disabled while waiting
 		if (false == spinning.load()) {
@@ -214,6 +215,11 @@ void PreemptivePriorityExecutor::spin ()
 			continue;
 		}
 
+		// If not busy but other threads are - do not preempt in non-preemptive mode!
+		if (NP_FP == d_scheduling_policy && n_running_jobs > 0) {
+			continue;
+		}
+
 		// Else: Mark it busy (we will now create and launch it)
 		highest_priority_job->set_is_running(true);
 
@@ -250,7 +256,7 @@ void PreemptivePriorityExecutor::spin ()
 			break;
 		}
 		std::this_thread::sleep_for(std::chrono::seconds(1));
-		job_queue_p = this->clear_finished_jobs(job_queue_p);
+		job_queue_p = this->clear_finished_jobs(job_queue_p, nullptr);
 	}
 
 	// Free allocated objects
@@ -294,45 +300,39 @@ void PreemptivePriorityExecutor::show_any_executable (AnyExecutable *any_executa
 }
 
 
-JobPriorityQueue *PreemptivePriorityExecutor::clear_finished_jobs (JobPriorityQueue *queue)
+JobPriorityQueue *PreemptivePriorityExecutor::clear_finished_jobs (JobPriorityQueue *queue,
+	int *n_running_jobs_p)
 {
+	int n_running_jobs = 0;
 	JobPriorityQueue *filtered_queue = new JobPriorityQueue(job_sort_comparator);
 
-	//std::cout << "queue = {";
 	// Pop elements
 	while (false == queue->empty()) {
 		Job *job_p = queue->top();
 		queue->pop();
 
-		// DEBUG:
-		AnyExecutable any_executable = job_p->any_executable();
-		//show_any_executable(&any_executable);
-
-		// If the task has finished, then destroy it and move on
-		// TODO: Maybe a race condition here
-		//       Only the workthread can set is finished
-		//       if it tries to access after this one deletes
-		//       then it is a bad thing - but shouldn't happen
-		//       since the last access must be to set is finished
+		// Remove job if finished
 		if (job_p->is_finished()) {
-			//std::cout << "Executor: detected thread for ";
-			//show_any_executable(&any_executable);
-			//std::cout << " done!" << std::endl;
-			//std::cout << "{x}";
 			delete job_p;
 			continue;
 		}
 
-		//std::cout << ", ";
+		// Increment running job counter if not finished
+		if (job_p->is_running()) {
+			n_running_jobs++;
+		}
 
 		// Otherwise: Push it into the new priority queue
 		filtered_queue->push(job_p);
 	}
 
-	//std::cout << "}" << std::endl; 
-
 	// Destroy the old queue
 	delete queue;
+
+	// Save number of running jobs counted if pointer provided
+	if (nullptr != n_running_jobs_p) {
+		*n_running_jobs_p = n_running_jobs;
+	}
 
 	return filtered_queue;
 }
