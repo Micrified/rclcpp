@@ -41,6 +41,14 @@ my_exec.spin();
 
 **Note**: You *need* to be root to use the PPE. It's best to start a root shell before running your ROS2 application (e.g. `sudo bash`). You will need to source the ROS2 scripts again though (`. install/setup.sh`)
 
+**Note**: PPE needs to be run on a system with at least *two* cores. This is because the executor scheduling thread is too busy to allow executable entities to run between blocking periods.
+
+### Testing System Configuration
+
+ * **OS**: Ubuntu 18.04.5 LTS
+ * **CPU**: Intel(R) Core(TM) i5-8600K (6 physical cores)
+ * **Memory**: 8GB 
+
 ---
 ## Examples
 
