@@ -627,25 +627,25 @@ bool Executor::get_next_ready_executable (AnyExecutable &any_executable)
 	// 1. Check if any timers are ready
 	memory_strategy_->get_next_timer(any_executable, weak_nodes_);
 	if (any_executable.timer) {
-		return can_run_ready_executable(true, any_executable);;
+		return can_run_ready_executable(true, any_executable);
 	}
 
 	// 2. Check if any subscriptions are ready
 	memory_strategy_->get_next_subscription(any_executable, weak_nodes_);
 	if (any_executable.subscription) {
-		return can_run_ready_executable(true, any_executable);;
+		return can_run_ready_executable(true, any_executable);
 	}
 
 	// 3. Check if any services are ready
 	memory_strategy_->get_next_service(any_executable, weak_nodes_);
 	if (any_executable.service) {
-		return can_run_ready_executable(true, any_executable);;
+		return can_run_ready_executable(true, any_executable);
 	}
 
 	// 4. Check if any clients are ready
 	memory_strategy_->get_next_client(any_executable, weak_nodes_);
 	if (any_executable.client) {
-		return can_run_ready_executable(true, any_executable);;
+		return can_run_ready_executable(true, any_executable);
 	}
 
 	// 5. Check for waitables
@@ -655,6 +655,26 @@ bool Executor::get_next_ready_executable (AnyExecutable &any_executable)
 	}
 
 	return can_run_ready_executable(false, any_executable);
+}
+
+std::set<AnyExecutable::SharedPtr> *get_all_ready_executables ()
+{
+	std::set<AnyExecutable::SharedPtr> *ready_set_p = new std::set<AnyExecutable::SharedPtr>();
+
+	// Insert all ready timers
+	get_all_ready_timers(ready_set_p, weak_nodes_);
+
+	// Insert all ready subscriptions
+	get_all_ready_subscriptions(ready_set_p, weak_nodes_);
+
+	return ready_set_p;
+}
+
+bool Executor::get_highest_priority_ready_executable (AnyExecutable &any_executable)
+{
+	memory_strategy_->get_highest_priority_timer_or_subscription(any_executable, weak_nodes_);
+	bool ready = ((nullptr != any_executable.subscription) || (nullptr != any_executable.timer));
+	return can_run_ready_executable(ready, any_executable);
 }
 
 bool Executor::can_run_ready_executable (bool ready, AnyExecutable &any_executable)

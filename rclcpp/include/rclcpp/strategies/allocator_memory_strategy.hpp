@@ -402,6 +402,223 @@ public:
     }
   }
 
+  void 
+  get_all_ready_timers (
+    std::set<AnyExecutable::SharedPtr> *ready_set_p,
+    const WeakNodeList & weak_nodes) override
+  {
+    auto it = timer_handles_.begin();
+    while (it != timer_handles_.end())
+    {
+      auto timer = get_timer_by_handle(*it, weak_nodes);
+
+      // If the timer is invalid, then erase it and move on
+      if (nullptr == timer) {
+        it = timer_handles_.erase(it);
+        continue;
+      }
+
+      // Find the group for this handle
+      auto group = get_group_by_timer(timer, weak_nodes);
+
+      // If the group isn't found, then erase it and move on
+      if (nullptr == group) {
+        it = timer_handles_.erase(it);
+        continue;
+      }
+
+      // If cannot access group at this time, then skip it
+      if (false == group->can_be_taken_from().load()) {
+        ++it;
+        continue;
+      }
+
+      // Otherwise create and configure a new executable
+      auto executable = make_shared<AnyExecutable>();
+      executable->timer = timer;
+      executable->callback_priority = timer->get_callback_priority();
+      executable->callback_group = group;
+      executable->node_base = get_node_by_group(group, weak_nodes);
+
+      // Insert into the executor set
+      ready_set_p->insert(executable);
+
+      // Remove it from the pending set (so don't increment but continue)
+      it = timer_handles_.erase(it);
+    }
+  }
+
+
+  void 
+  get_all_ready_subscriptions (
+    std::set<AnyExecutable::SharedPtr> *ready_set_p,
+    const WeakNodeList & weak_nodes) override
+  {
+    auto it = subscription_handles_.begin();
+    while (it != subscription_handles_.end())
+    {
+      auto subscription = get_subscription_by_handle(*it, weak_nodes);
+
+      // If the subscription is invalid, then erase it and move on
+      if (nullptr == subscription) {
+        it = subscription_handles_.erase(it);
+        continue;
+      }
+
+      // Find the group for this handle
+      auto group = get_group_by_subscription(subscription, weak_nodes);
+
+      // If the group isn't found, then erase it and move on
+      if (nullptr == group) {
+        it = subscription_handles_.erase(it);
+        continue;
+      }
+
+      // If cannot access group at this time, then skip it
+      if (false == group->can_be_taken_from().load()) {
+        ++it;
+        continue;
+      }
+
+      // Otherwise create and configure a new executable
+      auto executable = make_shared<AnyExecutable>();
+      executable->subscription = subscription;
+      executable->callback_priority = subscription->get_callback_priority();
+      executable->callback_group = group;
+      executable->node_base = get_node_by_group(group, weak_nodes);
+
+      // Insert into the executor set
+      ready_set_p->insert(executable);
+
+      // Remove it from the pending set (so don't increment but continue)
+      it = subscription_handles_.erase(it);
+    }
+  }
+
+  void 
+  get_highest_priority_timer_or_subscription(
+    rclcpp::AnyExecutable & any_exec,
+    const WeakNodeList & weak_nodes) override
+  {
+    // Indices of best element
+    off_t timer_index = 0, subscription_index = 0;
+
+    // Pointers to highest priority timer/subscription
+    rclcpp::TimerBase::SharedPtr max_priority_timer = nullptr;
+    rclcpp::SubscriptionBase::SharedPtr max_priority_subscription = nullptr;
+
+    // First search timers
+    auto timer_it = timer_handles_.begin();
+    while (timer_it != timer_handles_.end()) {
+      auto timer = get_timer_by_handle(*timer_it, weak_nodes);
+
+      // If null: timer/service invalid: remove it
+      if (nullptr == timer) {
+        timer_it = timer_handles_.erase(timer_it);
+        continue;
+      }
+
+      // Find group for this handle and see if need service
+      auto group = get_group_by_timer(timer, weak_nodes);
+
+      // Group not found? Invalid, so remove and continue
+      if (nullptr == group) {
+        timer_it = timer_handles_.erase(timer_it);
+        continue;
+      }
+
+      // Group mutually exclusive and in use? Skip and check next time
+      if (false == group->can_be_taken_from().load()) {
+        ++timer_it; ++timer_index;
+        continue;
+      }
+
+      // If a timer has been found, and this one doesn't exceed the priority
+      if ((nullptr != max_priority_timer) && 
+          (timer->get_callback_priority() <= max_priority_timer->get_callback_priority()))
+      {
+        ++timer_it; ++timer_index;
+        continue;
+      }
+
+      // Keep a reference to the timer
+      max_priority_timer = timer;
+      ++timer_it; ++timer_index;
+    }
+
+    // Then search for subscriptions
+    auto sub_it = subscription_handles_.begin();
+    while (sub_it != subscription_handles_.end()) {
+      auto subscription = get_subscription_by_handle(*sub_it, weak_nodes);
+
+      // If it is null, then remove it and move on
+      if (nullptr == subscription) {
+        sub_it = subscription_handles_.erase(sub_it);
+        continue;
+      }
+
+      // Find the group for the given subscription handle
+      auto group = get_group_by_subscription(subscription, weak_nodes);
+
+      // If no group then subscription is invalid: remove it and continue
+      if (nullptr == group) {
+        sub_it = subscription_handles_.erase(sub_it);
+        continue;
+      }
+
+      // Group mutually exclusive and in use? Skip and check next time
+      if (false == group->can_be_taken_from().load()) {
+        ++sub_it; ++subscription_index;
+        continue;
+      }
+
+      // If a subscription has been found, and this one doesn't exceed the priority
+      if ((nullptr != max_priority_subscription) &&
+          (subscription->get_callback_priority() <= max_priority_subscription->get_callback_priority()))
+      {
+        ++sub_it; ++subscription_index;
+        continue;
+      }
+
+      // Save the subscription, update the max priority
+      max_priority_subscription = subscription;
+      ++sub_it; ++subscription_index;
+    }
+
+    // Return best timer if: (1) there is a timer (2) either no subscription, or subscription
+    //                       is at lower priority than the timer
+    if ((nullptr != max_priority_timer) &&
+        ((nullptr == max_priority_subscription) || (max_priority_timer->get_callback_priority() > 
+        max_priority_subscription->get_callback_priority())))
+    {
+
+      // Configure AnyExecutable
+      any_exec.timer = max_priority_timer;
+      any_exec.callback_group = get_group_by_timer(max_priority_timer, weak_nodes);
+      any_exec.callback_priority = max_priority_timer->get_callback_priority();
+      any_exec.node_base = get_node_by_group(any_exec.callback_group, weak_nodes);
+
+      // Remove the timer from the set
+      timer_handles_.erase(timer_handles_.begin() + timer_index);
+    }
+
+    // Return best subscription if: (1) there is a subscription (2) either no timer, or timer is
+    //                              at lower priority than the subscription
+    if ((nullptr != max_priority_subscription) && 
+        ((nullptr == max_priority_timer) || (max_priority_subscription->get_callback_priority() > 
+          max_priority_timer->get_callback_priority())))
+    {
+      // Configure AnyExecutable
+      any_exec.subscription = max_priority_subscription;
+      any_exec.callback_group = get_group_by_subscription(max_priority_subscription, weak_nodes);
+      any_exec.callback_priority = max_priority_subscription->get_callback_priority();
+      any_exec.node_base = get_node_by_group(any_exec.callback_group, weak_nodes);
+
+      // Remove the subscription from the set
+      subscription_handles_.erase(subscription_handles_.begin() + subscription_index);
+    }
+  }
+
   void
   get_next_waitable(rclcpp::AnyExecutable & any_exec, const WeakNodeList & weak_nodes) override
   {

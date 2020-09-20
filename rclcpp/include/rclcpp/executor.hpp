@@ -295,6 +295,12 @@ protected:
   bool get_next_ready_executable (AnyExecutable &any_executable);
 
   RCLCPP_PUBLIC
+  std::set<AnyExecutable::SharedPtr> *get_all_ready_executables ();
+
+  RCLCPP_PUBLIC
+  bool get_highest_priority_ready_executable (AnyExecutable &any_executable);
+
+  RCLCPP_PUBLIC
   bool can_run_ready_executable (bool ready, AnyExecutable &any_executable);
 
   RCLCPP_PUBLIC

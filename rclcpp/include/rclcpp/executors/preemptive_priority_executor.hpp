@@ -73,6 +73,11 @@ typedef enum {
 	NP_EDF         // Non-preemptive earliest-deadline-first
 } scheduling_policy_t;
 
+// Enumeration of (supported) callback types
+typedef enum {
+	CALLBACK_TIMER,
+	CALLBACK_SUBSCRIPTION,
+} callback_t;
 
 /*
  *******************************************************************************
@@ -80,6 +85,152 @@ typedef enum {
  *******************************************************************************
 */
 
+class Callback {
+public:
+	Callback (rclcpp::SubscriptionBase::SharedPtr s, 
+		      rclcpp::CallbackGroup::SharedPtr callback_group,
+		      rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node_base):
+		d_callback_type(CALLBACK_SUBSCRIPTION),
+		d_callback_group(callback_group),
+		d_node_base(node_base),
+		d_subscription(s)
+	{
+
+		// TODO: Add support for serialized and loaned messages
+		if (s->is_serialized() || s->can_loan_messages()) {
+			throw std::runtime_error(std::string("Received serialized or loan(able) message!"));
+		}
+
+		// Get message metadata (timestamps, etc)
+		d_subscription_message_info.get_rmw_message_info().from_intra_process = false;
+
+		// Obtain a dynamically allocated message using the allocator strategy
+		d_subscription_message = s->create_message();
+
+		try {
+			s->take_type_erased(d_subscription_message.get(), d_subscription_message_info);
+		} catch (const rclcpp::exceptions::RCLError &rcl_error) {
+			throw std::runtime_error(std::string("Executor failed to take copied message for topic: \"") +
+				std::string(s->get_topic_name()) + std::string("\" RCL: ") + 
+				std::string(rcl_error.what()));
+		}
+
+		// Calls: handle_message and return_message will be invoked when execution needed
+	}
+
+	Callback (rclcpp::TimerBase::SharedPtr t,
+		      rclcpp::CallbackGroup::SharedPtr callback_group,
+		      rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node_base):
+		d_callback_type(CALLBACK_TIMER),
+		d_callback_group(callback_group),
+		d_node_base(node_base),
+		d_subscription(nullptr),
+		d_timer(t)
+	{
+		// execute_callback() in class GenericTimer in timer.hpp implements the CB for RCL timers
+		// it calls rcl_timer_call, but you should only call that if the period has elapsed yet
+		// and are responsible to tracking this.
+		// I don't want to make the call yet, so postpone this decision
+	}
+
+	// Move constructor
+	Callback (const Callback &&other)
+	{
+		d_callback_type = other.d_callback_type;
+		d_callback_group = std::move(other.d_callback_group);
+		d_node_base = std::move(other.d_node_base);
+		d_subscription = std::move(other.d_subscription);
+		d_timer = std::move(other.d_timer);
+		d_subscription_message_info = other.d_subscription_message_info;
+		d_subscription_message = std::move(other.d_subscription_message);
+	}
+
+	void execute ()
+	{
+		switch (d_callback_type) {
+			case CALLBACK_TIMER: {
+				this->execute_timer();
+			}
+			break;
+
+			case CALLBACK_SUBSCRIPTION: {
+				this->execute_subscription();
+			}
+			break;
+		}
+	}
+
+	std::string description ()
+	{
+		switch (d_callback_type) {
+			case CALLBACK_TIMER: {
+				return std::string("timer");
+			}
+			case CALLBACK_SUBSCRIPTION: {
+				return std::string("sub(") + std::string(d_subscription->get_topic_name())
+					+ std::string(")");
+			}
+		}
+		return std::string("unknown");
+	}
+
+	callback_t callback_type ()
+	{
+		return d_callback_type;
+	}
+
+	rclcpp::CallbackGroup::SharedPtr callback_group ()
+	{
+		return d_callback_group;
+	}
+
+	rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node_base ()
+	{
+		return d_node_base;
+	}
+
+	rclcpp::SubscriptionBase::SharedPtr subscription ()
+	{
+		return d_subscription;
+	}
+
+	rclcpp::TimerBase::SharedPtr timer ()
+	{
+		return d_timer;
+	}
+
+protected:
+	void execute_subscription ()
+	{
+		d_subscription->handle_message(d_subscription_message, d_subscription_message_info);
+		d_subscription->return_message(d_subscription_message);
+	}
+
+	void execute_timer ()
+	{
+		d_timer->execute_callback();
+	}
+
+private:
+
+	// Identifies type of callback
+	callback_t d_callback_type;
+
+	// Executable metadata
+	rclcpp::CallbackGroup::SharedPtr d_callback_group;
+	rclcpp::node_interfaces::NodeBaseInterface::SharedPtr d_node_base;
+
+	// Subscribion
+	rclcpp::SubscriptionBase::SharedPtr d_subscription;
+
+	// Timer
+	rclcpp::TimerBase::SharedPtr d_timer;
+
+	// Subscription metadata
+	rclcpp::MessageInfo d_subscription_message_info;
+	std::shared_ptr<void> d_subscription_message;
+
+};
 
 /// Instance of a running task. A task doesn't quite exist in ROS, so this wraps a callback instead
 /**
@@ -96,16 +247,30 @@ class Job {
 public:
 	Job (int callback_priority, AnyExecutable any_executable):
 		d_callback_priority(callback_priority),
-		d_any_executable(any_executable),
 		d_is_running(false),
-		d_is_finished(false)
-	{}
+		d_is_finished(false),
+		d_callback_ptr(nullptr)
+	{
+		if (nullptr != any_executable.timer) {
+			d_callback_ptr = std::make_shared<Callback>(any_executable.timer, any_executable.callback_group,
+				any_executable.node_base);
+			return;
+		}
+		if (nullptr != any_executable.subscription) {
+			d_callback_ptr = std::make_shared<Callback>(any_executable.subscription, any_executable.callback_group,
+				any_executable.node_base);
+			return;
+		}
 
-	Job (const Job &other)
+		throw std::runtime_error("Invalid executable type provided!");
+	}
+
+	Job (const Job &&other)
 	{
 		d_callback_priority = other.d_callback_priority;
 		d_is_running = other.d_is_running;
 		d_is_finished.store(other.d_is_finished.load());
+		d_callback_ptr = other.d_callback_ptr;
 	}
 
 	~Job ()
@@ -135,18 +300,33 @@ public:
 		return d_callback_priority;
 	}
 
-	AnyExecutable any_executable ()
+	std::string description ()
 	{
-		return d_any_executable;
+		return std::string("[") + std::to_string(d_callback_priority)
+			+ std::string("]:") + d_callback_ptr->description();
+	}
+
+	// AnyExecutable any_executable ()
+	// {
+	// 	return d_any_executable;
+	// }
+
+	std::shared_ptr<Callback> get_callback_ptr ()
+	{
+		return d_callback_ptr;
 	}
 
 private:
 	int d_callback_priority;
-	AnyExecutable d_any_executable;
+	//AnyExecutable d_any_executable;
+
 	bool d_is_running;
 
 	// Protected as accessed by more than one thread
 	std::atomic<bool> d_is_finished;
+
+	// The callback
+	std::shared_ptr<Callback> d_callback_ptr;
 };
 
 
@@ -194,8 +374,8 @@ public:
 	RCLCPP_PUBLIC 
 	PreemptivePriorityExecutor (
 		const rclcpp::ExecutorOptions &options = rclcpp::ExecutorOptions(),
-		thread_priority_range_t priority_range = {50,99},
-		scheduling_policy_t scheduling_policy = P_FP);
+		thread_priority_range_t priority_range = {50,90},
+		scheduling_policy_t scheduling_policy = NP_FP);
 
 	/*\
 	 * Destructor for the PreemptivePriorityExecutor
@@ -257,11 +437,25 @@ protected:
 	std::mutex *wait_mutex ();
 
 	/*\
+	 * Returns a pointer to the subscription mutex (used for thread access control)
+	 * \return Pointer to mutex
+	\*/
+	RCLCPP_PUBLIC
+	std::mutex *sub_mutex ();
+
+	/*\
 	 * Returns pointer to the scheduled timers set (set of active timer instances)
 	 * \return Pointer to scheduled timer set
 	\*/
 	RCLCPP_PUBLIC
 	std::set<TimerBase::SharedPtr> *scheduled_timers ();
+
+	/*\
+	 * Returns pointer to the scheduled subscription set (set of active subscription instances)
+	 * \return Pointer to scheduled subscription set
+	\*/
+	RCLCPP_PUBLIC
+	std::set<SubscriptionBase::SharedPtr> *scheduled_subscriptions ();
 
 private:
 
@@ -272,9 +466,17 @@ private:
 	// Control mutexes
 	std::mutex d_io_mutex;
 	std::mutex d_wait_mutex;
+	std::mutex d_sub_mutex;
 
 	// Scheduled timers 
 	std::set<TimerBase::SharedPtr> d_scheduled_timers;
+
+	// Pending callbacks hashmap
+	std::set<SubscriptionBase::SharedPtr> d_scheduled_subscriptions;
+
+
+	// Thread counter
+	std::atomic<int> d_thread_count;
 };
 
 }

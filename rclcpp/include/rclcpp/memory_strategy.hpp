@@ -85,6 +85,21 @@ public:
     rclcpp::AnyExecutable & any_exec,
     const WeakNodeList & weak_nodes) = 0;
 
+  virtual void 
+  get_all_ready_timers (
+    std::set<AnyExecutable::SharedPtr> *ready_set_p,
+    const WeakNodeList & weak_nodes) = 0;
+
+  virtual void 
+  get_highest_priority_timer_or_subscription(
+    rclcpp::AnyExecutable & any_exec,
+    const WeakNodeList & weak_nodes) = 0;
+
+  virtual void 
+  get_all_ready_subscriptions (
+    std::set<AnyExecutable::SharedPtr> *ready_set_p,
+    const WeakNodeList & weak_nodes) = 0;
+
   virtual void
   get_next_waitable(
     rclcpp::AnyExecutable & any_exec,
