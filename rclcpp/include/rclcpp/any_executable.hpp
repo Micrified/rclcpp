@@ -35,6 +35,38 @@ struct AnyExecutable
   RCLCPP_PUBLIC
   AnyExecutable();
 
+  /// Constructor (subscription)
+  AnyExecutable (rclcpp::SubscriptionBase::SharedPtr subscription_param,
+    int callback_priority_param,
+    rclcpp::CallbackGroup::SharedPtr callback_group_param,
+    rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node_base_param)
+  :
+    subscription(subscription_param),
+    timer(nullptr),
+    service(nullptr),
+    client(nullptr),
+    waitable(nullptr),
+    callback_priority(callback_priority_param),
+    callback_group(callback_group_param),
+    node_base(node_base_param)
+  {}
+
+  /// Constructor (timer)
+  AnyExecutable (rclcpp::TimerBase::SharedPtr timer_param,
+    int callback_priority_param,
+    rclcpp::CallbackGroup::SharedPtr callback_group_param,
+    rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node_base_param)
+  :
+    subscription(nullptr),
+    timer(timer_param),
+    service(nullptr),
+    client(nullptr),
+    waitable(nullptr),
+    callback_priority(callback_priority_param),
+    callback_group(callback_group_param),
+    node_base(node_base_param)
+  {}
+
   RCLCPP_PUBLIC
   virtual ~AnyExecutable();
 

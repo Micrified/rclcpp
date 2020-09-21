@@ -112,6 +112,11 @@ inline void set_thread_priority (pthread_t thread, int priority, int *policy_p,
 	}
 }
 
+//#define debug
+
+// TODO: Attempt to use the RCL interface to just fucking take the messages, and then
+// execute them later :) 
+
 void PreemptivePriorityExecutor::spin ()
 {
 	sched_param sch, sch_old;
@@ -119,6 +124,9 @@ void PreemptivePriorityExecutor::spin ()
 	cpu_set_t cpu_set;
 
 	// Note: (u_bound - l_bound - 1 preemptions available)
+
+	// Output mode
+	std::cout << std::string("\033[1;33m") + this->description() + std::string("\033[0m\n");
 
 	// Create job priority queue
 	JobPriorityQueue *job_queue_p = new JobPriorityQueue(job_sort_comparator);
@@ -152,55 +160,75 @@ void PreemptivePriorityExecutor::spin ()
 		int n_running_jobs = 0;
 
 		// Wait for work ...
+#ifdef debug
+		//std::cout << "- - - - - - - - - - - - - Threads: " << std::to_string(d_thread_count)
+		//          << std::endl;
+#endif
 		wait_for_work(std::chrono::nanoseconds(-1));
-
-		// Clear any finished jobs
-		job_queue_p = this->clear_finished_jobs(job_queue_p, &n_running_jobs);
 
 		// Check: Was spinning disabled while waiting
 		if (false == spinning.load()) {
 			break;
 		}
 
-		// If: A new executable instance is ready
-		if (true == this->get_next_ready_executable(any_executable)) {
+		// Grab the vector of all ready executables
+		std::vector<AnyExecutable> *ready_executables = this->get_all_ready_executables();
+
+		// Process all elements
+		for (auto e : *ready_executables) {
 			bool is_new_job = true;
 
-			// If: Timer, then check not already handled
-			if (nullptr != any_executable.timer) {
+			// Case: Timer: Check if already handled
+			if (nullptr != e.timer) {
 				std::lock_guard<std::mutex> temp_lock(d_wait_mutex);
 
-				// If: Busy timers, then check if one of them.
-				if (0 < d_scheduled_timers.count(any_executable.timer)) {
+				// If already a busy timer: ignore. Else: insert
+				if (0 < d_scheduled_timers.count(e.timer)) {
 
 					// Reset this (done in MultiThreadedExecutor)
-					if (nullptr != any_executable.callback_group) {
-						any_executable.callback_group->can_be_taken_from().store(true);
+					if (nullptr != e.callback_group) {
+						e.callback_group->can_be_taken_from().store(true);
 					}
 
-					// Not a new job - already exists!
+					// Not a new job
 					is_new_job = false;
 				} else {
-					
-				// Else: No busy timers - so insert this since it will be a new job
-					d_scheduled_timers.insert(any_executable.timer);
+					d_scheduled_timers.insert(e.timer);
 				}
 			}
 
-			// Note: Must remove timer from callback group after: Launched thread does this
+			// Case: Subscription: Check if already handled
+			if (nullptr != e.subscription) {
+				std::lock_guard<std::mutex> temp_lock(d_sub_mutex);
 
-
-			// If: Is a new instance, then compute a priority for this callback
-			if (is_new_job) {
-				int new_job_priority = this->get_executable_priority(any_executable);
-
-				// Create a new job
-				Job *new_job_ptr = new Job(new_job_priority, std::move(any_executable));
-
-				// Push job to priority queue
-				job_queue_p->push(new_job_ptr);			
+				// If already a busy subscription: ignore. Else: insert
+				if (0 < d_scheduled_subscriptions.count(e.subscription)) {
+					is_new_job = false;
+				} else {
+					d_scheduled_subscriptions.insert(e.subscription);
+				}
 			}
+
+			// If not a new job, then continue
+			if (false == is_new_job) {
+				continue;
+			}
+
+			// Otherwise insert into priority queue
+			// TODO: get_executable_priority is redundant so remove
+			Job *new_job_ptr = new Job(e.callback_priority,
+				std::move(e));
+
+			job_queue_p->push(new_job_ptr);
+
+			//e.callback_group.reset();
 		}
+
+		// Destroy the set
+		delete ready_executables;
+
+		// Clear any finished jobs
+		job_queue_p = this->clear_finished_jobs(job_queue_p, &n_running_jobs);
 
 		// Reset and wait if no jobs to consider
 		if (job_queue_p->size() == 0) {
@@ -212,6 +240,11 @@ void PreemptivePriorityExecutor::spin ()
 
 		// If it is busy, do nothing
 		if (true == highest_priority_job->is_running()) {
+#ifdef debug
+			//AnyExecutable a = highest_priority_job->any_executable();
+			//show_any_executable(&a);
+			std::cout << highest_priority_job->description() << ": is_running -> continue" << std::endl;
+#endif
 			continue;
 		}
 
@@ -219,6 +252,12 @@ void PreemptivePriorityExecutor::spin ()
 		if (NP_FP == d_scheduling_policy && n_running_jobs > 0) {
 			continue;
 		}
+
+#ifdef debug
+		// AnyExecutable a = highest_priority_job->any_executable();
+		// show_any_executable(&a);
+		std::cout << highest_priority_job->description() << " launching" << std::endl;
+#endif
 
 		// Else: Mark it busy (we will now create and launch it)
 		highest_priority_job->set_is_running(true);
@@ -245,10 +284,16 @@ void PreemptivePriorityExecutor::spin ()
 
 		// Detach the thread
 		new_job_thread.detach();
+
+		// Increment counter
+		d_thread_count++;
 	}
 
 	// Busy wait for any outstanding work to finish (in case of spinning set to false)
+#ifdef debug
 	std::cout << "Executor: Shutting down - waiting for outstanding work threads ... " << std::endl;
+#endif
+
 	off_t spin_count = 0;
 	while (0 < job_queue_p->size()) {
 		spin_count++;
@@ -307,6 +352,10 @@ JobPriorityQueue *PreemptivePriorityExecutor::clear_finished_jobs (JobPriorityQu
 	JobPriorityQueue *filtered_queue = new JobPriorityQueue(job_sort_comparator);
 
 	// Pop elements
+#ifdef debug
+	std::cout << "jobs[" << queue->size() << "] = {";
+#endif
+
 	while (false == queue->empty()) {
 		Job *job_p = queue->top();
 		queue->pop();
@@ -314,8 +363,18 @@ JobPriorityQueue *PreemptivePriorityExecutor::clear_finished_jobs (JobPriorityQu
 		// Remove job if finished
 		if (job_p->is_finished()) {
 			delete job_p;
+			d_thread_count--;
 			continue;
 		}
+
+#ifdef debug
+		// AnyExecutable a = job_p->any_executable();
+		// show_any_executable(&a);
+		std::cout << job_p->description();
+		if (queue->size() > 0) {
+			std::cout << ", ";
+		}
+#endif
 
 		// Increment running job counter if not finished
 		if (job_p->is_running()) {
@@ -325,6 +384,10 @@ JobPriorityQueue *PreemptivePriorityExecutor::clear_finished_jobs (JobPriorityQu
 		// Otherwise: Push it into the new priority queue
 		filtered_queue->push(job_p);
 	}
+
+#ifdef debug
+	std::cout << "}" << std::endl;
+#endif
 
 	// Destroy the old queue
 	delete queue;
@@ -337,54 +400,50 @@ JobPriorityQueue *PreemptivePriorityExecutor::clear_finished_jobs (JobPriorityQu
 	return filtered_queue;
 }
 
-
-int PreemptivePriorityExecutor::get_executable_priority (AnyExecutable &any_executable)
-{
-	int priority = -1;
-	size_t n_priorities = 0;
-
-	// If it is a timer, then use the supplied value (set via the timer constructor)
-	if (nullptr != any_executable.timer) {
-		n_priorities++;
-		priority = any_executable.callback_priority;
-	}
-
-	// If it is a subscription, lookup the priority in the map
-	if (nullptr != any_executable.subscription) {
-		n_priorities++;
-		priority = any_executable.callback_priority;
-	}
-
-
-	if (n_priorities > 1) {
-		throw std::runtime_error("An instance of AnyExecutable had more than one field set!");
-	}
-
-	return priority;
-}
-
 void PreemptivePriorityExecutor::run (rclcpp::executors::PreemptivePriorityExecutor *executor, Job *job_p)
 {
 	std::set<rclcpp::TimerBase::SharedPtr> *scheduled_timers = executor->scheduled_timers();
-	AnyExecutable any_executable = job_p->any_executable();
+	std::set<rclcpp::SubscriptionBase::SharedPtr> *scheduled_subscriptions = 
+		executor->scheduled_subscriptions();
 	std::mutex *wait_mutex_p = executor->wait_mutex();
+	std::mutex *sub_mutex_p = executor->sub_mutex();
+
+
 
 	// Work
-	executor->execute_any_executable(any_executable);
+	// 	AnyExecutable any_executable = job_p->any_executable();
+	// executor->execute_any_executable(any_executable);
+	std::shared_ptr<Callback> callback_ptr = job_p->get_callback_ptr();
+
+	callback_ptr->execute();
 
 	// If it is a timer, don't forget to remove it from the scheduled timers set
 	{
 		std::lock_guard<std::mutex> temp_lock(*wait_mutex_p);
-		if (nullptr != any_executable.timer) {
-			auto it = scheduled_timers->find(any_executable.timer);
+		//if (nullptr != any_executable.timer) {
+		if (nullptr != callback_ptr->timer()) {
+			auto it = scheduled_timers->find(callback_ptr->timer());
 			if (it != scheduled_timers->end()) {
 				scheduled_timers->erase(it);
 			}
 		}
 	}
 
+	// If it is a subscription, don't forget to remove it from the subscription set
+	{
+		std::lock_guard<std::mutex> temp_lock(*sub_mutex_p);
+		//if (nullptr != any_executable.subscription) {
+		if (nullptr != callback_ptr->subscription()) {
+			auto it = scheduled_subscriptions->find(callback_ptr->subscription());
+			if (it != scheduled_subscriptions->end()) {
+				scheduled_subscriptions->erase(it);
+			}
+		}
+	}
+
 	// Clear the callback group
-	any_executable.callback_group.reset();		
+	//any_executable.callback_group.reset();
+	callback_ptr->callback_group().reset();
 
     // Set value
 	job_p->set_is_finished(true);
@@ -395,8 +454,35 @@ std::mutex *PreemptivePriorityExecutor::wait_mutex ()
 {
 	return &(d_wait_mutex);
 }
+
+std::mutex *PreemptivePriorityExecutor::sub_mutex ()
+{
+	return &(d_sub_mutex);
+}
 	
 std::set<rclcpp::TimerBase::SharedPtr> *PreemptivePriorityExecutor::scheduled_timers ()
 {
 	return &(d_scheduled_timers);
+}
+
+std::set<rclcpp::SubscriptionBase::SharedPtr> *PreemptivePriorityExecutor::scheduled_subscriptions ()
+{
+	return &(d_scheduled_subscriptions);
+}
+
+std::string PreemptivePriorityExecutor::description ()
+{
+	std::string desc("Preemptive-Priority-Executor {.mode = ");
+	switch (d_scheduling_policy) {
+		case P_FP:   desc += std::string("P-FP");     break;
+		case NP_FP:  desc += std::string("NP-FP");    break;
+		case P_EDF:  desc += std::string("P-EDF");    break;
+		case NP_EDF: desc += std::string("NP-EDF");   break;
+	}
+	desc += std::string(", .prio_range = [");
+	desc += std::to_string(d_priority_range.l_bound);
+	desc += std::string(",");
+	desc += std::to_string(d_priority_range.u_bound);
+	desc += std::string("]}");
+	return desc;
 }
