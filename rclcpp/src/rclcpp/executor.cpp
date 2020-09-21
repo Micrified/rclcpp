@@ -657,17 +657,17 @@ bool Executor::get_next_ready_executable (AnyExecutable &any_executable)
 	return can_run_ready_executable(false, any_executable);
 }
 
-std::set<AnyExecutable::SharedPtr> *get_all_ready_executables ()
+std::vector<AnyExecutable> *Executor::get_all_ready_executables ()
 {
-	std::set<AnyExecutable::SharedPtr> *ready_set_p = new std::set<AnyExecutable::SharedPtr>();
+	std::vector<AnyExecutable> *ready_vector_p = new std::vector<AnyExecutable>();
 
 	// Insert all ready timers
-	get_all_ready_timers(ready_set_p, weak_nodes_);
+	memory_strategy_->get_all_ready_timers(ready_vector_p, weak_nodes_);
 
 	// Insert all ready subscriptions
-	get_all_ready_subscriptions(ready_set_p, weak_nodes_);
+	memory_strategy_->get_all_ready_subscriptions(ready_vector_p, weak_nodes_);
 
-	return ready_set_p;
+	return ready_vector_p;
 }
 
 bool Executor::get_highest_priority_ready_executable (AnyExecutable &any_executable)

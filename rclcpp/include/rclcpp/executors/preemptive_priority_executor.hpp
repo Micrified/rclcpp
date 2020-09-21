@@ -375,7 +375,7 @@ public:
 	PreemptivePriorityExecutor (
 		const rclcpp::ExecutorOptions &options = rclcpp::ExecutorOptions(),
 		thread_priority_range_t priority_range = {50,90},
-		scheduling_policy_t scheduling_policy = NP_FP);
+		scheduling_policy_t scheduling_policy = P_FP);
 
 	/*\
 	 * Destructor for the PreemptivePriorityExecutor
@@ -409,16 +409,6 @@ protected:
 	RCLCPP_PUBLIC
 	JobPriorityQueue *clear_finished_jobs (JobPriorityQueue *queue, 
 		int *n_running_jobs_p);
-
-
-	/*\
-	 * Returns priority assigned to given executable. 
-	 * Note: Services and clients do not yet have priorities. Returns -1 for them
-	 * \param any_executable Reference to executable 
-	 * \return Integer describing priority
-	\*/
-	RCLCPP_PUBLIC
-	int get_executable_priority (AnyExecutable &any_executable);
 
 	/*\
 	 * Runs a callback. This should be run within a worker thread at a lower priority
@@ -456,6 +446,12 @@ protected:
 	\*/
 	RCLCPP_PUBLIC
 	std::set<SubscriptionBase::SharedPtr> *scheduled_subscriptions ();
+
+	/*\
+	 * Returns a string object describing the executor mode and priority ranges
+	 * \return String describing executor
+	\*/
+	std::string description ();
 
 private:
 

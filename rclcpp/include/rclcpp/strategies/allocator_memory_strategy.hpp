@@ -17,6 +17,7 @@
 
 #include <memory>
 #include <vector>
+#include <set>
 
 #include "rcl/allocator.h"
 
@@ -404,7 +405,7 @@ public:
 
   void 
   get_all_ready_timers (
-    std::set<AnyExecutable::SharedPtr> *ready_set_p,
+    std::vector<AnyExecutable> *ready_vector_p,
     const WeakNodeList & weak_nodes) override
   {
     auto it = timer_handles_.begin();
@@ -433,15 +434,9 @@ public:
         continue;
       }
 
-      // Otherwise create and configure a new executable
-      auto executable = make_shared<AnyExecutable>();
-      executable->timer = timer;
-      executable->callback_priority = timer->get_callback_priority();
-      executable->callback_group = group;
-      executable->node_base = get_node_by_group(group, weak_nodes);
-
-      // Insert into the executor set
-      ready_set_p->insert(executable);
+      // Otherwise create and insert the executable
+      ready_vector_p->emplace_back(timer, timer->get_callback_priority(),
+        group, get_node_by_group(group, weak_nodes));
 
       // Remove it from the pending set (so don't increment but continue)
       it = timer_handles_.erase(it);
@@ -451,7 +446,7 @@ public:
 
   void 
   get_all_ready_subscriptions (
-    std::set<AnyExecutable::SharedPtr> *ready_set_p,
+    std::vector<AnyExecutable> *ready_vector_p,
     const WeakNodeList & weak_nodes) override
   {
     auto it = subscription_handles_.begin();
@@ -480,15 +475,9 @@ public:
         continue;
       }
 
-      // Otherwise create and configure a new executable
-      auto executable = make_shared<AnyExecutable>();
-      executable->subscription = subscription;
-      executable->callback_priority = subscription->get_callback_priority();
-      executable->callback_group = group;
-      executable->node_base = get_node_by_group(group, weak_nodes);
-
-      // Insert into the executor set
-      ready_set_p->insert(executable);
+      // Otherwise create and insert the executable
+      ready_vector_p->emplace_back(subscription, subscription->get_callback_priority(),
+        group, get_node_by_group(group, weak_nodes));
 
       // Remove it from the pending set (so don't increment but continue)
       it = subscription_handles_.erase(it);

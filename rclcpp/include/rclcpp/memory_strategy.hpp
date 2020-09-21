@@ -17,6 +17,7 @@
 
 #include <list>
 #include <memory>
+#include <set>
 
 #include "rcl/allocator.h"
 #include "rcl/wait.h"
@@ -87,17 +88,17 @@ public:
 
   virtual void 
   get_all_ready_timers (
-    std::set<AnyExecutable::SharedPtr> *ready_set_p,
+    std::vector<AnyExecutable> *ready_vector_p,
+    const WeakNodeList & weak_nodes) = 0;
+
+  virtual void 
+  get_all_ready_subscriptions (
+    std::vector<AnyExecutable> *ready_vector_p,
     const WeakNodeList & weak_nodes) = 0;
 
   virtual void 
   get_highest_priority_timer_or_subscription(
     rclcpp::AnyExecutable & any_exec,
-    const WeakNodeList & weak_nodes) = 0;
-
-  virtual void 
-  get_all_ready_subscriptions (
-    std::set<AnyExecutable::SharedPtr> *ready_set_p,
     const WeakNodeList & weak_nodes) = 0;
 
   virtual void

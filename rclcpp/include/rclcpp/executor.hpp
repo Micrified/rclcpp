@@ -25,6 +25,7 @@
 #include <mutex>
 #include <string>
 #include <vector>
+#include <set>
 
 #include "rcl/guard_condition.h"
 #include "rcl/wait.h"
@@ -295,7 +296,7 @@ protected:
   bool get_next_ready_executable (AnyExecutable &any_executable);
 
   RCLCPP_PUBLIC
-  std::set<AnyExecutable::SharedPtr> *get_all_ready_executables ();
+  std::vector<AnyExecutable> *get_all_ready_executables ();
 
   RCLCPP_PUBLIC
   bool get_highest_priority_ready_executable (AnyExecutable &any_executable);
