@@ -389,6 +389,16 @@ public:
 	RCLCPP_PUBLIC
 	void spin() override;
 
+	/*\
+	 * Multiplexes callbacks according to the scheduling policy set in the 
+	 * constructor. Runs until the given duration has expired. 
+	 * Note: Threads busy running jobs will not check the timer until their next
+	 *       job
+	 * \param duration Duration to spin (ns). If zero, then spin indefinitely
+	\*/
+	RCLCPP_PUBLIC
+	void spin_some (std::chrono::nanoseconds max_duration = std::chrono::nanoseconds(0)) override;
+
 protected:
 
 	/*\

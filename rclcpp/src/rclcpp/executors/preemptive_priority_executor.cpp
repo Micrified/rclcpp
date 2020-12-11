@@ -112,12 +112,18 @@ inline void set_thread_priority (pthread_t thread, int priority, int *policy_p,
 	}
 }
 
+
+void PreemptivePriorityExecutor::spin ()
+{
+	spin_some(std::chrono::nanoseconds(0));
+}
+
 //#define debug
 
 // TODO: Attempt to use the RCL interface to just fucking take the messages, and then
 // execute them later :) 
 
-void PreemptivePriorityExecutor::spin ()
+void PreemptivePriorityExecutor::spin_some (std::chrono::nanoseconds max_duration)
 {
 	sched_param sch, sch_old;
 	int policy, policy_old;
@@ -150,12 +156,23 @@ void PreemptivePriorityExecutor::spin ()
 	// Apply FIFO policy with priority
 	set_thread_priority(pthread_self(), d_priority_range.u_bound, &policy, &sch);
 
+	// Mark the start time
+	auto start = std::chrono::steady_clock::now();
+
+	// Define a closure for checking if duration expired
+	auto callback_should_still_spin = [max_duration, start]()
+	{
+		// Case: Spin forever
+		if (std::chrono::nanoseconds(0) == max_duration) return true;
+		return ((std::chrono::steady_clock::now() - start) < max_duration);
+	};
 
 	// TODO: Consider alternative architecture. Perhaps a pool of work
 	//       threads like MultiThreadedExecutor that just pick up new
 	//       work from a priority-queue when awoken by the executor
 	//       main thread. Avoids overhead of spawning threads
-	while (rclcpp::ok(this->context_) && spinning.load()) {
+	while (rclcpp::ok(this->context_) && spinning.load() && 
+		true == callback_should_still_spin()) {
 		AnyExecutable any_executable;
 		int n_running_jobs = 0;
 
@@ -313,6 +330,7 @@ void PreemptivePriorityExecutor::spin ()
 			std::string(std::strerror(errno)));
 	}
 }
+
 
 /*
  *******************************************************************************
