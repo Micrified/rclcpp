@@ -37,3 +37,40 @@ SingleThreadedExecutor::spin()
     }
   }
 }
+
+void
+SingleThreadedExecutor::spin_some(std::chrono::nanoseconds max_duration)
+{
+  // Fetch and store current timestamp
+  auto start = std::chrono::steady_clock::now();
+
+  // Create callback
+  auto callback_should_still_spin = [max_duration, start]()
+  {
+    // Case: Spin forever
+    if (std::chrono::nanoseconds(0) == max_duration) {
+      return true;
+    }
+
+    // Case: Spin for duration
+    return ((std::chrono::steady_clock::now() - start) < max_duration);
+  };
+
+  // Check if already spinning
+  if (true == spinning.exchange(true)) {
+    throw std::runtime_error("spin_some() called while already spinning!");
+  }
+
+  RCLCPP_SCOPE_EXIT(this->spinning.store(false); );
+
+  while (rclcpp::ok(context_) && (true == spinning.load()) &&
+    true == callback_should_still_spin())
+  {
+    AnyExecutable any_exec;
+    
+    // Non-preemptable call
+    if (get_next_ready_executable(any_exec)) {
+      execute_any_executable(any_exec);
+    }
+  }
+}

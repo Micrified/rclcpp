@@ -65,6 +65,18 @@ public:
   void
   spin() override;
 
+  /// Single-threaded implementation of spin-some
+  /**
+   * The default implementation waits for work exactly once, and stops if
+   * the existing work during the polling period exceeds the given duration.
+   * This has been amended to wait and executor work continually until the 
+   * duration has exceeded
+   * \param[in] max_duration The maximum amount of time to spend executing
+   */
+  RCLCPP_PUBLIC
+  void 
+  spin_some(std::chrono::nanoseconds max_duration = std::chrono::nanoseconds(0)) override;
+
 private:
   RCLCPP_DISABLE_COPY(SingleThreadedExecutor)
 };
