@@ -69,7 +69,7 @@ SingleThreadedExecutor::spin_some(std::chrono::nanoseconds max_duration)
     AnyExecutable any_exec;
     
     // Non-preemptable call
-    if (get_next_ready_executable(any_exec)) {
+    if (get_next_executable(any_exec)) {
       execute_any_executable(any_exec);
     }
   }
