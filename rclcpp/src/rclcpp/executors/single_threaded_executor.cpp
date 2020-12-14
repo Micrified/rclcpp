@@ -38,11 +38,37 @@ SingleThreadedExecutor::spin()
   }
 }
 
+
+#define DEBUG
+
+
+#ifdef DEBUG
+#include <thread>
+#include <pthread.h>
+#include <sched.h>
+#include <cstring>
+inline void pin_to_core (pthread_t thread, int core, cpu_set_t *cpu_set_p)
+{
+  CPU_ZERO(cpu_set_p);
+  CPU_SET(core, cpu_set_p);
+  if (0 != pthread_setaffinity_np(thread, sizeof(cpu_set_t), cpu_set_p)) {
+    throw std::runtime_error(std::string("pthread_setaffinity_np: ") +
+      std::string(std::strerror(errno)));
+  }
+}
+#endif
+
 void
 SingleThreadedExecutor::spin_some(std::chrono::nanoseconds max_duration)
 {
   // Fetch and store current timestamp
   auto start = std::chrono::steady_clock::now();
+
+#ifdef DEBUG
+  cpu_set_t cpu_set;
+  std::cout << "Note: Debug enabled, and process pinned to core 0!" << std::endl;
+  pin_to_core(pthread_self(), 0, &cpu_set);
+#endif
 
   // Create callback
   auto callback_should_still_spin = [max_duration, start]()
