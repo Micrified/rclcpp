@@ -47,6 +47,7 @@ SingleThreadedExecutor::spin()
 #include <pthread.h>
 #include <sched.h>
 #include <cstring>
+
 inline void pin_to_core (pthread_t thread, int core, cpu_set_t *cpu_set_p)
 {
   CPU_ZERO(cpu_set_p);
