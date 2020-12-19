@@ -43,6 +43,8 @@ my_exec.spin();
 
 **Note**: PPE needs to be run on a system with at least *two* cores. This is because the executor scheduling thread is too busy to allow executable entities to run between blocking periods.
 
+**Note**: PPE **doesn't work** for services, or other waitable types besides timers and subscriptions. This may be remedied in the future.
+
 ### Testing System Configuration
 
  * **OS**: Ubuntu 18.04.5 LTS
