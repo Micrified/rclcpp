@@ -28,7 +28,7 @@ using Callback_Ptr = std::shared_ptr<Callback>;
 #define CORE_EXEC        0        // Executor (scheduler) core
 #define CORE_WORK        1        // Job-process core
 
-#define DEBUG                     // Performs cout logging if enabled
+//#define DEBUG                     // Performs cout logging if enabled
 
 /*
  *******************************************************************************
@@ -180,6 +180,7 @@ void PreemptivePriorityExecutor::spin_some (std::chrono::nanoseconds max_duratio
 
 void PreemptivePriorityExecutor::run (Consumer<Callback_Ptr> *c, int thread_id)
 {
+	(void)(thread_id);
 	// Extract useful fields
 	auto duration = c->duration();
 	auto timeout  = c->timeout();

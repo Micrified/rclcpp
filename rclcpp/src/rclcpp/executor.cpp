@@ -34,6 +34,8 @@
 // RCUtils headers
 #include "rcutils/logging_macros.h"
 
+// Debug enable
+// #define DEBUG
 
 // Using declarations
 using rclcpp::exceptions::throw_from_rcl_error;
@@ -600,7 +602,9 @@ void Executor::wait_for_work (std::chrono::nanoseconds timeout)
 		break;
 
 		case RCL_RET_TIMEOUT: {
+#ifdef DEBUG
 			RCUTILS_LOG_WARN_NAMED("rclcpp", "Timeout expired prematurely!");
+#endif
 		}
 		break;
 
