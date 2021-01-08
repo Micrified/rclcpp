@@ -48,15 +48,7 @@ SingleThreadedExecutor::spin()
 #include <sched.h>
 #include <cstring>
 
-inline void pin_to_core (pthread_t thread, int core, cpu_set_t *cpu_set_p)
-{
-  CPU_ZERO(cpu_set_p);
-  CPU_SET(core, cpu_set_p);
-  if (0 != pthread_setaffinity_np(thread, sizeof(cpu_set_t), cpu_set_p)) {
-    throw std::runtime_error(std::string("pthread_setaffinity_np: ") +
-      std::string(std::strerror(errno)));
-  }
-}
+
 #endif
 
 void
@@ -67,8 +59,17 @@ SingleThreadedExecutor::spin_some(std::chrono::nanoseconds max_duration)
 
 #ifdef DEBUG
   cpu_set_t cpu_set;
-  std::cout << "Note: Debug enabled, and process pinned to core 0!" << std::endl;
-  pin_to_core(pthread_self(), 0, &cpu_set);
+  std::cout << std::string("\033[1;33m") + "SingleThreadedExecutor: Pinned to cores {0,1}" + 
+    std::string("\033[0m\n");
+
+  CPU_ZERO(&cpu_set);
+  CPU_SET(0, &cpu_set);
+  CPU_SET(1, &cpu_set);
+  if (0 != pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpu_set)) {
+    throw std::runtime_error(std::string("pthread_setaffinity_np: ") + 
+      std::string(std::strerror(errno)));
+  }
+
 #endif
 
   // Create callback
