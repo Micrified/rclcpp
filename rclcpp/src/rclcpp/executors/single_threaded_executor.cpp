@@ -39,15 +39,31 @@ SingleThreadedExecutor::spin()
 }
 
 
+// Debugging flag
 #define DEBUG
 
+// Profiling flag
+//#define PROFILE
 
 #ifdef DEBUG
 #include <thread>
 #include <pthread.h>
 #include <sched.h>
 #include <cstring>
+#endif
 
+
+#ifdef PROFILE
+#include <chrono>
+extern "C" {
+  #include <syslog.h>
+}
+
+// Total processed callbacks
+long g_n_processed_callbacks_;
+
+// Cumulative processing time (ns)
+long long g_cumulative_processing_time_ns_;
 
 #endif
 
@@ -59,12 +75,11 @@ SingleThreadedExecutor::spin_some(std::chrono::nanoseconds max_duration)
 
 #ifdef DEBUG
   cpu_set_t cpu_set;
-  std::cout << std::string("\033[1;33m") + "SingleThreadedExecutor: Pinned to cores {0,1}" + 
+  std::cout << std::string("\033[1;33m") + "SingleThreadedExecutor: Pinned to cores {0}" + 
     std::string("\033[0m\n");
 
   CPU_ZERO(&cpu_set);
   CPU_SET(0, &cpu_set);
-  CPU_SET(1, &cpu_set);
   if (0 != pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpu_set)) {
     throw std::runtime_error(std::string("pthread_setaffinity_np: ") + 
       std::string(std::strerror(errno)));
@@ -97,8 +112,23 @@ SingleThreadedExecutor::spin_some(std::chrono::nanoseconds max_duration)
     AnyExecutable any_exec;
     
     // Non-preemptable call
+#ifdef PROFILE
+    long long overhead_ns;
+    if (get_next_executable(any_exec, &overhead_ns)) {
+#else
     if (get_next_executable(any_exec)) {
+#endif
+
+#ifdef PROFILE
+      g_n_processed_callbacks_++;
+      g_cumulative_processing_time_ns_ += overhead_ns;
+#endif
       execute_any_executable(any_exec);
     }
   }
+
+#ifdef PROFILE
+  long long avg_processing_time = g_cumulative_processing_time_ns_ / g_n_processed_callbacks_;
+  syslog(LOG_INFO, "{.value: %lld, .mode: 0}", avg_processing_time);
+#endif
 }

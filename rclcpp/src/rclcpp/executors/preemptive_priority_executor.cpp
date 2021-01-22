@@ -30,6 +30,8 @@ using Callback_Ptr = std::shared_ptr<Callback>;
 
 //#define DEBUG                     // Performs cout logging if enabled
 
+//#define PROFILE                   // Enables profiling, written to cout   
+
 /*
  *******************************************************************************
  *                           Constructor/Destructor                            *
@@ -217,6 +219,31 @@ void PreemptivePriorityExecutor::run (Consumer<Callback_Ptr> *c, int thread_id)
 	}
 }
 
+
+#ifdef PROFILE
+
+extern "C" {
+	#include <syslog.h>
+}
+
+// Total processed callbacks
+long g_n_processed_callbacks;
+
+// Cumulative processing time (ns)
+long long g_cumulative_processing_time_ns;
+
+// Function returning timestamp with nanosecond precision
+long long get_timestamp_ns ()
+{
+	auto timestamp_ns = std::chrono::time_point_cast<std::chrono::nanoseconds>(
+		std::chrono::steady_clock::now());
+	auto value_ns = timestamp_ns.time_since_epoch();
+	return value_ns.count();	
+}
+
+#endif
+
+
 void PreemptivePriorityExecutor::multiplex (std::chrono::nanoseconds max_duration,
 	std::vector<Consumer<Callback_Ptr> *> *consumers_p)
 {
@@ -246,6 +273,9 @@ void PreemptivePriorityExecutor::multiplex (std::chrono::nanoseconds max_duratio
 		}
 
 		// Clear and fetch new ready executables
+#ifdef PROFILE
+		long long processing_start_time_ns = get_timestamp_ns();
+#endif
 		ready_executables.clear();
 		memory_strategy_->get_all_ready_timers(&ready_executables, weak_nodes_);
 		memory_strategy_->get_all_ready_subscriptions(&ready_executables, weak_nodes_);
@@ -282,7 +312,20 @@ void PreemptivePriorityExecutor::multiplex (std::chrono::nanoseconds max_duratio
 			// Notify the work thread (lost if not sleeping)
 			cv_p->notify_one();
 		}
+
+#ifdef PROFILE
+		long long processing_time_duration_ns = get_timestamp_ns() - processing_start_time_ns;
+		if (ready_executables.size() > 0) {
+			g_n_processed_callbacks += ready_executables.size();
+			g_cumulative_processing_time_ns += processing_time_duration_ns;
+		}
+#endif
 	}
+
+#ifdef PROFILE
+	long long avg_processing_time = g_cumulative_processing_time_ns / g_n_processed_callbacks;
+	syslog(LOG_INFO, "{.value: %lld, .mode: 1}", avg_processing_time);
+#endif
 }
 
 

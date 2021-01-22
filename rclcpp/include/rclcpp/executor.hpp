@@ -40,6 +40,11 @@
 #include "rclcpp/visibility_control.hpp"
 #include "rclcpp/scope_exit.hpp"
 
+
+// If defined, custom profiling code is used
+// #define PROFILE
+
+
 namespace rclcpp
 {
 
@@ -295,6 +300,11 @@ protected:
   RCLCPP_PUBLIC
   bool get_next_ready_executable (AnyExecutable &any_executable);
 
+#ifdef PROFILE
+  RCLCPP_PUBLIC
+  bool get_next_ready_executable (AnyExecutable &any_executable, long long *overhead_ns_ptr);
+#endif
+
   RCLCPP_PUBLIC
   std::vector<AnyExecutable> *get_all_ready_executables ();
 
@@ -306,6 +316,12 @@ protected:
 
   RCLCPP_PUBLIC
   bool get_next_executable (AnyExecutable &any_executable, std::chrono::nanoseconds timeout = std::chrono::nanoseconds(-1));
+
+#ifdef PROFILE
+  RCLCPP_PUBLIC
+  bool get_next_executable (AnyExecutable &any_executable, long long *overhead_ns_ptr, 
+    std::chrono::nanoseconds timeout = std::chrono::nanoseconds(-1));
+#endif
 
   /// Spinning state, used to prevent multi threaded calls to spin and to cancel blocking spins.
   std::atomic_bool spinning;

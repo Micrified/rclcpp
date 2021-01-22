@@ -625,8 +625,6 @@ void Executor::wait_for_work (std::chrono::nanoseconds timeout)
 
 bool Executor::get_next_ready_executable (AnyExecutable &any_executable)
 {
-	// TODO: Select next ready executable via a priority!
-
 	// 1. Check if any timers are ready
 	memory_strategy_->get_next_timer(any_executable, weak_nodes_);
 	if (any_executable.timer) {
@@ -659,6 +657,26 @@ bool Executor::get_next_ready_executable (AnyExecutable &any_executable)
 
 	return can_run_ready_executable(false, any_executable);
 }
+
+
+#ifdef PROFILE
+// Function returning timestamp with nanosecond precision
+long long get_timestamp_ns_ ()
+{
+  auto timestamp_ns = std::chrono::time_point_cast<std::chrono::nanoseconds>(
+    std::chrono::steady_clock::now());
+  auto value_ns = timestamp_ns.time_since_epoch();
+  return value_ns.count();  
+}
+
+bool Executor::get_next_ready_executable (AnyExecutable &any_executable, long long *overhead_ns_ptr) {
+	long long start = get_timestamp_ns_();
+	auto ret = get_next_ready_executable(any_executable);
+	long long duration = get_timestamp_ns_() - start;
+	*overhead_ns_ptr = duration;
+	return ret;
+}
+#endif
 
 std::vector<AnyExecutable> *Executor::get_all_ready_executables ()
 {
@@ -716,7 +734,7 @@ bool Executor::get_next_executable (AnyExecutable &any_executable,
 		// Wait until work arrives
 		wait_for_work(timeout);
 
-		// If not spinning (I guess), then return false
+		// If not spinning, return false
 		if (!spinning.load()) {
 			return false;
 		}
@@ -727,6 +745,31 @@ bool Executor::get_next_executable (AnyExecutable &any_executable,
 
 	return success;
 }
+
+#ifdef PROFILE
+bool Executor::get_next_executable (AnyExecutable &any_executable,
+	                                long long *overhead_ns_ptr,
+	                                std::chrono::nanoseconds timeout)
+{
+	bool success = false;
+
+	if ((success = get_next_ready_executable(any_executable, overhead_ns_ptr)) == false) {
+
+		// Wait until work arrives
+		wait_for_work(timeout);
+
+		// If not spinning, return false
+		if (!spinning.load()) {
+			return false;
+		}
+
+		// Try again
+		success = get_next_ready_executable(any_executable, overhead_ns_ptr);
+	}
+
+	return success;
+}
+#endif
 
 /*
  *******************************************************************************
