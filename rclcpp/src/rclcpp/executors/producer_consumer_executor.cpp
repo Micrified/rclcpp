@@ -1,6 +1,6 @@
 
 // File header
-#include "rclcpp/executors/preemptive_priority_executor.hpp"
+#include "rclcpp/executors/producer_consumer_executor.hpp"
 
 // Standard headers
 #include <chrono>
@@ -13,7 +13,7 @@
 #include "rclcpp/scope_exit.hpp"
 
 // Directives
-using rclcpp::executors::PreemptivePriorityExecutor;
+using rclcpp::executors::PPE::ProducerConsumerExecutor;
 using rclcpp::executors::thread_priority_range_t;
 using rclcpp::executors::Callback;
 using Callback_Ptr = std::shared_ptr<Callback>;
@@ -39,7 +39,7 @@ using Callback_Ptr = std::shared_ptr<Callback>;
 */
 
 
-PreemptivePriorityExecutor::PreemptivePriorityExecutor (
+ProducerConsumerExecutor::ProducerConsumerExecutor (
 	const rclcpp::ExecutorOptions &options,
 	thread_priority_range_t priority_range)
 :
@@ -60,7 +60,7 @@ PreemptivePriorityExecutor::PreemptivePriorityExecutor (
 }
 
 
-PreemptivePriorityExecutor::~PreemptivePriorityExecutor ()
+ProducerConsumerExecutor::~ProducerConsumerExecutor ()
 {
 
 }
@@ -96,13 +96,13 @@ inline void set_thread_priority (pthread_t thread, int priority, int *policy_p,
 }
 
 
-void PreemptivePriorityExecutor::spin ()
+void ProducerConsumerExecutor::spin ()
 {
 	spin_some(std::chrono::nanoseconds(0));
 }
 
 
-void PreemptivePriorityExecutor::spin_some (std::chrono::nanoseconds max_duration)
+void ProducerConsumerExecutor::spin_some (std::chrono::nanoseconds max_duration)
 {
 	// Variables for core affinity and process priority
 	sched_param sch, sch_old;
@@ -146,7 +146,7 @@ void PreemptivePriorityExecutor::spin_some (std::chrono::nanoseconds max_duratio
 	// Create the Callback_Ptr consumer threads (no wait lock needed due to job queue)
 	for (size_t thread_id = 0; thread_id < consumers.size(); ++thread_id) {
 		Consumer<Callback_Ptr> *c = consumers[thread_id];
-		auto func = std::bind(&PreemptivePriorityExecutor::run, this, c, thread_id);
+		auto func = std::bind(&ProducerConsumerExecutor::run, this, c, thread_id);
 		threads.emplace_back(func);
 	}
 
@@ -180,7 +180,7 @@ void PreemptivePriorityExecutor::spin_some (std::chrono::nanoseconds max_duratio
 	}
 }
 
-void PreemptivePriorityExecutor::run (Consumer<Callback_Ptr> *c, int thread_id)
+void ProducerConsumerExecutor::run (Consumer<Callback_Ptr> *c, int thread_id)
 {
 	(void)(thread_id);
 	// Extract useful fields
@@ -244,7 +244,7 @@ long long get_timestamp_ns ()
 #endif
 
 
-void PreemptivePriorityExecutor::multiplex (std::chrono::nanoseconds max_duration,
+void ProducerConsumerExecutor::multiplex (std::chrono::nanoseconds max_duration,
 	std::vector<Consumer<Callback_Ptr> *> *consumers_p)
 {
 	std::vector<AnyExecutable> ready_executables;
@@ -329,7 +329,7 @@ void PreemptivePriorityExecutor::multiplex (std::chrono::nanoseconds max_duratio
 }
 
 
-Callback_Ptr PreemptivePriorityExecutor::executable_to_callback (AnyExecutable e)
+Callback_Ptr ProducerConsumerExecutor::executable_to_callback (AnyExecutable e)
 {
 	Callback_Ptr callback = nullptr;
 
@@ -361,7 +361,7 @@ Callback_Ptr PreemptivePriorityExecutor::executable_to_callback (AnyExecutable e
 }
 
 
-void PreemptivePriorityExecutor::remove_expired_executable (Callback_Ptr callback)
+void ProducerConsumerExecutor::remove_expired_executable (Callback_Ptr callback)
 {
 	switch (callback->callback_type()) {
 		case CALLBACK_TIMER: {
@@ -390,9 +390,9 @@ void PreemptivePriorityExecutor::remove_expired_executable (Callback_Ptr callbac
 }
 
 
-std::string PreemptivePriorityExecutor::description ()
+std::string ProducerConsumerExecutor::description ()
 {
-	std::string s("Preemptive-Priority-Executor {.prio_range = [");
+	std::string s("Producer-Consumer-Executor (PPE-PC) {.prio_range = [");
 	s += std::to_string(d_priority_range.l_bound);
 	s += std::string(",");
 	s += std::to_string(d_priority_range.u_bound);

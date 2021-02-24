@@ -21,7 +21,8 @@
 #include "rclcpp/executors/multi_threaded_executor.hpp"
 #include "rclcpp/executors/single_threaded_executor.hpp"
 #include "rclcpp/executors/static_single_threaded_executor.hpp"
-#include "rclcpp/executors/preemptive_priority_executor.hpp"
+#include "rclcpp/executors/producer_consumer_executor.hpp"
+#include "rclcpp/executors/thread_dispatch_executor.hpp"
 #include "rclcpp/node.hpp"
 #include "rclcpp/utilities.hpp"
 #include "rclcpp/visibility_control.hpp"
@@ -54,7 +55,8 @@ namespace executors
 
 using rclcpp::executors::MultiThreadedExecutor;
 using rclcpp::executors::SingleThreadedExecutor;
-using rclcpp::executors::PreemptivePriorityExecutor;
+using rclcpp::executors::PPE::ProducerConsumerExecutor;
+using rclcpp::executors::PPE::ThreadDispatchExecutor;
 
 /// Spin (blocking) until the future is complete, it times out waiting, or rclcpp is interrupted.
 /**
