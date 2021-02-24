@@ -22,6 +22,15 @@
 #include "rclcpp/utilities.hpp"
 #include "rclcpp/scope_exit.hpp"
 
+#define DEBUG
+
+#ifdef DEBUG
+#include <thread>
+#include <pthread.h>
+#include <sched.h>
+#include <cstring>
+#endif
+
 using rclcpp::executors::MultiThreadedExecutor;
 
 MultiThreadedExecutor::MultiThreadedExecutor(
@@ -33,6 +42,20 @@ MultiThreadedExecutor::MultiThreadedExecutor(
   yield_before_execute_(yield_before_execute),
   next_exec_timeout_(next_exec_timeout)
 {
+
+#ifdef DEBUG
+  cpu_set_t cpu_set;
+  std::cout << std::string("\033[1;33m") + "MultiThreadedExecutor: Pinned to cores {0,1}" + 
+    std::string("\033[0m\n");
+  CPU_ZERO(&cpu_set);
+  CPU_SET(0, &cpu_set);
+  CPU_SET(1, &cpu_set);
+  if (0 != pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpu_set)) {
+    throw std::runtime_error(std::string("pthread_setaffinity_np: ") + 
+      std::string(std::strerror(errno)));
+  }
+
+#endif
   number_of_threads_ = number_of_threads ? number_of_threads : std::thread::hardware_concurrency();
   if (number_of_threads_ == 0) {
     number_of_threads_ = 1;
