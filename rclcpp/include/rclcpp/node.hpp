@@ -193,8 +193,10 @@ public:
    * \param[in] topic_name The topic to subscribe on.
    * \param[in] qos QoS profile for Subcription.
    * \param[in] callback The user-defined callback function to receive a message
+   * \param[in] callback_priority The user-defined callback priority level
    * \param[in] options Additional options for the creation of the Subscription.
    * \param[in] msg_mem_strat The message memory strategy to use for allocating messages.
+   * \param[in] callback_priority Priority value for use with preemptive executors
    * \return Shared pointer to the created subscription.
    */
   template<
@@ -222,31 +224,6 @@ public:
     const int callback_priority = -1
   );
 
-
-  template<
-    typename MessageT,
-    typename CallbackT,
-    typename AllocatorT = std::allocator<void>,
-    typename CallbackMessageT =
-    typename rclcpp::subscription_traits::has_message_type<CallbackT>::type,
-    typename SubscriptionT = rclcpp::Subscription<CallbackMessageT, AllocatorT>,
-    typename MessageMemoryStrategyT = rclcpp::message_memory_strategy::MessageMemoryStrategy<
-      CallbackMessageT,
-      AllocatorT
-    >
-  >
-  std::shared_ptr<SubscriptionT>
-  create_priority_subscription(
-    const std::string & topic_name,
-    const rclcpp::QoS & qos,
-    CallbackT && callback,
-    const int callback_priority,
-    const SubscriptionOptionsWithAllocator<AllocatorT> & options =
-    SubscriptionOptionsWithAllocator<AllocatorT>(),
-    typename MessageMemoryStrategyT::SharedPtr msg_mem_strat = (
-      MessageMemoryStrategyT::create_default()
-    )
-  );
   /// Create a timer.
   /**
    * \param[in] period Time interval between triggers of the callback.

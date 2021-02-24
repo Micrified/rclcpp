@@ -106,32 +106,6 @@ Node::create_subscription(
     callback_priority);
 }
 
-template<
-  typename MessageT,
-  typename CallbackT,
-  typename AllocatorT,
-  typename CallbackMessageT,
-  typename SubscriptionT,
-  typename MessageMemoryStrategyT>
-std::shared_ptr<SubscriptionT>
-Node::create_priority_subscription(
-  const std::string & topic_name,
-  const rclcpp::QoS & qos,
-  CallbackT && callback,
-  const int callback_priority,
-  const SubscriptionOptionsWithAllocator<AllocatorT> & options,
-  typename MessageMemoryStrategyT::SharedPtr msg_mem_strat)
-{
-  return rclcpp::create_subscription<MessageT>(
-    *this,
-    extend_name_with_sub_namespace(topic_name, this->get_sub_namespace()),
-    qos,
-    std::forward<CallbackT>(callback),
-    options,
-    msg_mem_strat,
-    callback_priority);
-}
-
 template<typename DurationRepT, typename DurationT, typename CallbackT>
 typename rclcpp::WallTimer<CallbackT>::SharedPtr
 Node::create_wall_timer(
